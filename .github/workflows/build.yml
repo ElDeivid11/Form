@@ -14,6 +14,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # PASO NUEVO 1: Java es obligatorio para herramientas de Android
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -24,9 +31,14 @@ jobs:
           pip install -r requirements.txt
           pip install flet
 
+      # PASO NUEVO 2: Aceptar licencias automáticamente
+      - name: Accept Android Licenses
+        run: |
+          # Esto busca el sdkmanager y le dice "sí" a todo automáticamente
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || yes | $ANDROID_HOME/tools/bin/sdkmanager --licenses
+
       - name: Build APK
         run: |
-          # El comando mágico de Flet para compilar
           flet build apk --verbose
 
       - name: Upload APK artifact

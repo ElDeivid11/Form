@@ -14,7 +14,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # PASO NUEVO 1: Java es obligatorio para herramientas de Android
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -31,10 +30,12 @@ jobs:
           pip install -r requirements.txt
           pip install flet
 
-      # PASO NUEVO 2: Aceptar licencias automáticamente
+      # PASO NUEVO CRÍTICO: Borrar la carpeta .git para que no rompa el empaquetado
+      - name: Cleanup Git folder
+        run: rm -rf .git
+
       - name: Accept Android Licenses
         run: |
-          # Esto busca el sdkmanager y le dice "sí" a todo automáticamente
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || yes | $ANDROID_HOME/tools/bin/sdkmanager --licenses
 
       - name: Build APK

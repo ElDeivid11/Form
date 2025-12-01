@@ -1,0 +1,4 @@
+flet
+fpdf2
+Pillow
+pytz

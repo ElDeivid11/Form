@@ -14,6 +14,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Cleanup Workspace
+        run: |
+          rm -rf build
+          rm -rf .git/refs/heads/main  # A veces da problemas
+          ls -R # Muestra los archivos para que veas en el log si logo2.png está ahí
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -30,17 +36,13 @@ jobs:
           pip install -r requirements.txt
           pip install flet
 
-      # PASO NUEVO CRÍTICO: Borrar la carpeta .git para que no rompa el empaquetado
-      - name: Cleanup Git folder
-        run: rm -rf .git
-
       - name: Accept Android Licenses
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || yes | $ANDROID_HOME/tools/bin/sdkmanager --licenses
 
       - name: Build APK
         run: |
-          flet build apk --verbose
+          flet build apk --verbose --include-packages flet
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

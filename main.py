@@ -31,8 +31,8 @@ TAREAS_MANTENIMIENTO = [
 ]
 
 CORREOS_POR_CLIENTE = {
-    "Intermar": "contacto@intermar.cl", 
-    "Las200": "admin@las200.cl"
+    "Intermar": "soporte@tecnocomp.cl", 
+    "Las200": "soporte@tecnocomp.cl"
 }
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
@@ -273,7 +273,7 @@ def main(page: ft.Page):
                 ft.IconButton(icon=ft.Icons.DARK_MODE if app_state["tema"]=="light" else ft.Icons.LIGHT_MODE, icon_color=c["texto"], on_click=cambiar_tema)
             ], alignment="spaceBetween"),
             ft.Divider(height=10, color="transparent"),
-            ft.Container(content=ft.Image(src="logo.png", width=200, fit=ft.ImageFit.CONTAIN, error_content=ft.Icon(ft.Icons.BROKEN_IMAGE)), bgcolor="white" if app_state["tema"]=="dark" else None, border_radius=10, padding=5 if app_state["tema"]=="dark" else 0, shadow=ft.BoxShadow(blur_radius=20, color=c["sombra"], offset=ft.Offset(0, 5))),
+            ft.Container(content=ft.Image(src="logo2.png", width=200, fit=ft.ImageFit.CONTAIN, error_content=ft.Icon(ft.Icons.BROKEN_IMAGE)), bgcolor="white" if app_state["tema"]=="dark" else None, border_radius=10, padding=5 if app_state["tema"]=="dark" else 0, shadow=ft.BoxShadow(blur_radius=20, color=c["sombra"], offset=ft.Offset(0, 5))),
             ft.Divider(height=10, color="transparent"),
             ft.Text("Bienvenido, Técnico", size=26, weight="bold", color=c["texto"]), ft.Text("Gestión de Visitas", size=14, color=c["texto_sec"], weight="w500")
         ], horizontal_alignment="center", spacing=5), bgcolor=c["superficie"], width=float("inf"), padding=ft.padding.only(top=50, bottom=30, left=20, right=20), border_radius=ft.border_radius.only(bottom_left=40, bottom_right=40), shadow=ft.BoxShadow(blur_radius=20, color="#15000000", offset=ft.Offset(0, 10)))

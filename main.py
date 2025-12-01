@@ -7,6 +7,7 @@ import sys
 import json
 import pytz 
 import smtplib 
+import tempfile # CLAVE PARA ANDROID
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -21,7 +22,8 @@ from PIL import Image, ImageDraw
 # ==========================================
 NOMBRE_EMPRESA_ONEDRIVE = "Tecnocomp Computacion Ltda" 
 NOMBRE_CARPETA_ONEDRIVE = "Visitas Terreno"
-CARPETA_LOCAL_INFORMES = "Informes"
+# Carpeta local solo se usará si estamos en Windows para respaldo
+CARPETA_LOCAL_INFORMES = "Informes" 
 
 TAREAS_MANTENIMIENTO = [
     "Borrar Temporales", "Actualizaciones Windows", "Revisión Antivirus", 
@@ -29,8 +31,8 @@ TAREAS_MANTENIMIENTO = [
 ]
 
 CORREOS_POR_CLIENTE = {
-    "Intermar": "soporte@tecnocomp.cl", 
-    "Las200": "soporte@tecnocomp.cl"
+    "Intermar": "contacto@intermar.cl", 
+    "Las200": "admin@las200.cl"
 }
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
@@ -42,7 +44,7 @@ USUARIOS_POR_CLIENTE = {
     "Las200": ["Nieves Vallejos", "Jennifer No se cuanto", "Benjamin Practicas"]
 }
 
-# Paleta de Colores
+# --- PALETA DE COLORES ---
 COLOR_PRIMARIO = "#0583F2"
 COLOR_SECUNDARIO = "#2685BF"
 COLOR_ACCENTO = "#2BB9D9"
@@ -62,42 +64,45 @@ COLORES = {
     }
 }
 
-# --- CLASE PDF PERSONALIZADA (V24 - SIN WARNINGS) ---
+# --- CLASE PDF PERSONALIZADA (DISEÑO PREMIUM) ---
 class PDFReporte(FPDF):
     def header(self):
         # Barra Azul Superior
-        self.set_fill_color(5, 131, 242)
+        self.set_fill_color(5, 131, 242) # RGB #0583F2
         self.rect(0, 0, 210, 42, 'F')
         
-        logo_to_use = "logo.png" if os.path.exists("logo.png") else ("logo2.png" if os.path.exists("logo2.png") else None)
+        # Logo Blanco (logo2.png)
+        logo_to_use = "logo2.png" if os.path.exists("logo2.png") else ("logo.png" if os.path.exists("logo.png") else None)
         if logo_to_use:
             try: self.image(logo_to_use, x=10, y=6, w=50) 
             except: pass
             
+        # Título
         self.set_font('Helvetica', 'B', 16)
         self.set_text_color(255, 255, 255)
         self.set_xy(140, 15)
-        self.cell(60, 10, 'INFORME TÉCNICO', align='R', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        self.ln(35) # Espacio para bajar del header
+        self.cell(60, 10, 'INFORME TÉCNICO', 0, 0, 'R')
+        self.ln(45)
 
     def footer(self):
         self.set_y(-15)
         self.set_font('Helvetica', 'I', 8)
         self.set_text_color(128, 128, 128)
-        # Warning corregido: ln=0 -> new_x=RIGHT
-        self.cell(0, 10, f'Página {self.page_no()}/{{nb}} - App Visitas Tecnocomp', align='C', new_x=XPos.RIGHT, new_y=YPos.TOP)
+        self.cell(0, 10, f'Página {self.page_no()}/{{nb}} - App Visitas Tecnocomp', 0, 0, 'C')
 
 def main(page: ft.Page):
     page.title = "Tecnocomp Mobile"
     page.window_width = 400
     page.window_height = 850
     page.padding = 0 
-    page.scroll = "adaptive"
+    page.scroll = "adaptive" # Vital para móviles
 
+    # Estado Global
     app_state = {"tema": "light"}
     page.theme_mode = ft.ThemeMode.LIGHT
     page.bgcolor = COLORES["light"]["fondo"]
     
+    # Variable para guardar la ruta temporal del PDF
     ultimo_pdf_generado = ft.Text("", visible=False) 
 
     def cambiar_tema(e):
@@ -109,9 +114,13 @@ def main(page: ft.Page):
         route_change(page.route)
         page.update()
 
-    if not os.path.exists(CARPETA_LOCAL_INFORMES): os.makedirs(CARPETA_LOCAL_INFORMES)
+    # Solo creamos carpeta local si estamos en PC
+    if sys.platform == "win32":
+        if not os.path.exists(CARPETA_LOCAL_INFORMES): os.makedirs(CARPETA_LOCAL_INFORMES)
 
-    # --- BASE DE DATOS ---
+    # ==========================================
+    # 2. BASE DE DATOS
+    # ==========================================
     def inicializar_db():
         con = sqlite3.connect("visitas.db")
         cur = con.cursor()
@@ -129,7 +138,9 @@ def main(page: ft.Page):
         con.commit(); con.close()
     inicializar_db()
 
-    # --- BACKEND ---
+    # ==========================================
+    # 3. BACKEND
+    # ==========================================
     def obtener_hora_chile():
         try: return datetime.datetime.now(pytz.timezone('Chile/Continental'))
         except: return datetime.datetime.now()
@@ -148,10 +159,13 @@ def main(page: ft.Page):
         if not os.path.exists(ruta_pdf): return False, "PDF no existe."
         dest = CORREOS_POR_CLIENTE.get(cliente, "")
         if not dest: return False, f"No hay correo para {cliente}"
-        msg = MIMEMultipart(); msg['From'] = EMAIL_REMITENTE; msg['To'] = dest
+        
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_REMITENTE; msg['To'] = dest
         msg['Subject'] = f"Reporte - {cliente} - {datetime.datetime.now().strftime('%d/%m')}"
         cuerpo = f"""<html><body><h2 style="color:{COLOR_PRIMARIO};">Reporte de Visita</h2><p>Adjunto informe técnico.</p></body></html>"""
         msg.attach(MIMEText(cuerpo, 'html'))
+        
         try:
             with open(ruta_pdf, "rb") as att:
                 part = MIMEBase("application", "octet-stream"); part.set_payload(att.read())
@@ -177,110 +191,81 @@ def main(page: ft.Page):
 
     def guardar_firma_img(trazos):
         if not trazos: return None
-        path = os.path.join(CARPETA_LOCAL_INFORMES, "firma_temp.png")
+        # GUARDAMOS EN TEMP PARA EVITAR PERMISOS EN ANDROID
+        temp_dir = tempfile.gettempdir()
+        path = os.path.join(temp_dir, "firma_temp.png")
         img = Image.new("RGB", (400, 200), "white"); draw = ImageDraw.Draw(img)
         for t in trazos:
             if len(t) > 1: draw.line(t, fill="black", width=3)
             elif len(t) == 1: draw.point(t[0], fill="black")
         img.save(path); return path
 
-    # --- GENERADOR DE PDF (SIN WARNINGS) ---
+    # --- GENERADOR PDF PREMIUM ---
     def generar_pdf(cliente, tecnico, obs, path_firma, datos_usuarios):
         pdf = PDFReporte(orientation='P', unit='mm', format='A4')
         pdf.alias_nb_pages()
         pdf.add_page()
         
-        # Bloque de Datos
+        # Bloque Gris Datos
         pdf.set_fill_color(240, 240, 240)
         pdf.rect(10, 48, 190, 28, 'F')
         
-        pdf.set_xy(15, 53)
-        # Warning corregido: new_x, new_y
-        pdf.set_font("Helvetica", "B", 10); pdf.set_text_color(100, 100, 100); pdf.cell(25, 6, "CLIENTE:", new_x=XPos.RIGHT, new_y=YPos.TOP)
-        pdf.set_font("Helvetica", "B", 11); pdf.set_text_color(0, 0, 0); pdf.cell(0, 6, cliente, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        
-        pdf.set_x(15)
-        pdf.set_font("Helvetica", "B", 10); pdf.set_text_color(100, 100, 100); pdf.cell(25, 6, "TÉCNICO:", new_x=XPos.RIGHT, new_y=YPos.TOP)
-        pdf.set_font("Helvetica", "", 11); pdf.set_text_color(0, 0, 0); pdf.cell(0, 6, tecnico, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        
-        pdf.set_x(15)
-        pdf.set_font("Helvetica", "B", 10); pdf.set_text_color(100, 100, 100); pdf.cell(25, 6, "FECHA:", new_x=XPos.RIGHT, new_y=YPos.TOP)
+        pdf.set_xy(15, 53); pdf.set_font("Helvetica", "B", 10); pdf.set_text_color(100, 100, 100); pdf.cell(25, 6, "CLIENTE:", 0, 0)
+        pdf.set_font("Helvetica", "B", 11); pdf.set_text_color(0, 0, 0); pdf.cell(0, 6, cliente, 0, 1)
+        pdf.set_x(15); pdf.set_font("Helvetica", "B", 10); pdf.set_text_color(100, 100, 100); pdf.cell(25, 6, "TÉCNICO:", 0, 0)
+        pdf.set_font("Helvetica", "", 11); pdf.set_text_color(0, 0, 0); pdf.cell(0, 6, tecnico, 0, 1)
+        pdf.set_x(15); pdf.set_font("Helvetica", "B", 10); pdf.set_text_color(100, 100, 100); pdf.cell(25, 6, "FECHA:", 0, 0)
         pdf.set_font("Helvetica", "", 11); pdf.set_text_color(0, 0, 0); 
-        pdf.cell(0, 6, obtener_hora_chile().strftime('%d/%m/%Y %H:%M'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.cell(0, 6, obtener_hora_chile().strftime('%d/%m/%Y %H:%M'), 0, 1)
 
         pdf.ln(15)
 
-        # Título Bitácora
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.set_text_color(5, 131, 242)
-        pdf.cell(0, 8, "BITÁCORA DE ATENCIÓN", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='L')
-        pdf.ln(2)
+        # Título
+        pdf.set_font("Helvetica", "B", 12); pdf.set_text_color(5, 131, 242); pdf.cell(0, 8, "BITÁCORA DE ATENCIÓN", 0, 1, 'L'); pdf.ln(2)
         pdf.set_draw_color(200, 200, 200); pdf.line(10, pdf.get_y(), 200, pdf.get_y()); pdf.ln(5)
 
         for u in datos_usuarios:
             if pdf.get_y() > 220: pdf.add_page()
-
-            pdf.set_font("Helvetica", "B", 11)
-            pdf.set_text_color(0, 0, 0)
-            # Warning corregido
-            pdf.cell(130, 8, u['nombre'], new_x=XPos.RIGHT, new_y=YPos.TOP, align='L')
-            
+            pdf.set_font("Helvetica", "B", 11); pdf.set_text_color(0, 0, 0); pdf.cell(140, 8, u['nombre'], 0, 0, 'L')
             pdf.set_font("Helvetica", "B", 9)
-            if u['atendido']:
-                pdf.set_fill_color(220, 255, 220); pdf.set_text_color(0, 100, 0)
-                pdf.cell(50, 8, "ATENDIDO", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C', fill=True)
-            else:
-                pdf.set_fill_color(255, 220, 220); pdf.set_text_color(180, 0, 0)
-                pdf.cell(50, 8, "NO ATENDIDO", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C', fill=True)
-            
-            pdf.set_text_color(0, 0, 0)
-            pdf.ln(2)
-            
-            pdf.set_x(10)
-            pdf.set_font("Helvetica", "", 10)
+            if u['atendido']: pdf.set_fill_color(220, 255, 220); pdf.set_text_color(0, 100, 0); pdf.cell(50, 8, "ATENDIDO", 0, 1, 'C', True)
+            else: pdf.set_fill_color(255, 220, 220); pdf.set_text_color(180, 0, 0); pdf.cell(50, 8, "NO ATENDIDO", 0, 1, 'C', True)
+            pdf.set_text_color(0, 0, 0); pdf.ln(2); pdf.set_x(10); pdf.set_font("Helvetica", "", 10)
             texto = f"Trabajo: {u['trabajo']}" if u['atendido'] else f"Motivo: {u['motivo']}"
-            pdf.multi_cell(0, 5, texto, align='L')
+            pdf.multi_cell(0, 5, texto, 0, 'L')
 
+            # FOTOS (IMÁGENES GRANDES)
             if u['fotos'] and u['atendido']:
-                pdf.ln(3)
-                pdf.set_font("Helvetica", "B", 9); pdf.set_text_color(5, 131, 242)
-                pdf.cell(0, 4, "Evidencias Adjuntas:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-                
-                x_curr, y_curr = 10, pdf.get_y() + 1 
+                pdf.ln(2); pdf.set_font("Helvetica", "B", 9); pdf.set_text_color(5, 131, 242); pdf.cell(0, 4, "Evidencias Adjuntas:", 0, 1)
+                x_curr, y_curr = 10, pdf.get_y() + 1
                 for fp in u['fotos']:
                     if os.path.exists(fp):
                         if x_curr + 45 > 200: x_curr = 10; y_curr += 40
                         if y_curr + 40 > 250: pdf.add_page(); x_curr = 10; y_curr = pdf.get_y()
-                        try: 
-                            pdf.image(fp, x=x_curr, y=y_curr, h=35)
-                            x_curr += 48 
+                        try: pdf.image(fp, x=x_curr, y=y_curr, h=35); x_curr += 48
                         except: pass
                 pdf.set_y(y_curr + 40) 
 
-            pdf.ln(5)
-            pdf.set_draw_color(230, 230, 230); pdf.line(10, pdf.get_y(), 200, pdf.get_y()); pdf.ln(5)
+            pdf.ln(5); pdf.set_draw_color(230, 230, 230); pdf.line(10, pdf.get_y(), 200, pdf.get_y()); pdf.ln(5)
 
         if pdf.get_y() > 220: pdf.add_page()
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.set_text_color(5, 131, 242)
-        # Warning corregido
-        pdf.cell(0, 8, "OBSERVACIONES ADICIONALES", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='L')
-        pdf.set_font("Helvetica", "", 10)
-        pdf.set_text_color(0,0,0)
-        pdf.multi_cell(0, 6, obs if obs else "Sin observaciones adicionales.", align='L')
-        pdf.ln(10)
+        pdf.set_font("Helvetica", "B", 12); pdf.set_text_color(5, 131, 242); pdf.cell(0, 8, "OBSERVACIONES ADICIONALES", 0, 1, 'L')
+        pdf.set_font("Helvetica", "", 10); pdf.set_text_color(0,0,0); pdf.multi_cell(0, 6, obs if obs else "Sin observaciones adicionales.", 0, 'L'); pdf.ln(10)
         
         if path_firma and os.path.exists(path_firma):
             if pdf.get_y() > 200: pdf.add_page()
-            pdf.set_font("Helvetica", "B", 11)
-            # Warning corregido
-            pdf.cell(0, 6, "CONFORMIDAD DEL SERVICIO", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='L')
-            pdf.image(path_firma, w=50)
-        
-        nombre = f"Reporte_{cliente}_{obtener_hora_chile().strftime('%Y%m%d_%H%M%S')}.pdf"
-        ruta = os.path.join(CARPETA_LOCAL_INFORMES, nombre); pdf.output(ruta); return ruta
+            pdf.set_font("Helvetica", "B", 11); pdf.cell(0, 6, "CONFORMIDAD DEL SERVICIO", 0, 1, 'L'); pdf.image(path_firma, w=50)
 
-    # --- UI HELPERS ---
+        # GUARDAR EN TEMP (FIX ANDROID)
+        temp_dir = tempfile.gettempdir()
+        nombre = f"Reporte_{cliente}_{obtener_hora_chile().strftime('%Y%m%d_%H%M%S')}.pdf"
+        ruta = os.path.join(temp_dir, nombre)
+        pdf.output(ruta)
+        return ruta
+
+    # ==========================================
+    # 4. UI HELPERS
+    # ==========================================
     def crear_header(c):
         return ft.Container(content=ft.Column([
             ft.Row([
@@ -288,7 +273,7 @@ def main(page: ft.Page):
                 ft.IconButton(icon=ft.Icons.DARK_MODE if app_state["tema"]=="light" else ft.Icons.LIGHT_MODE, icon_color=c["texto"], on_click=cambiar_tema)
             ], alignment="spaceBetween"),
             ft.Divider(height=10, color="transparent"),
-            ft.Container(content=ft.Image(src="logo2.png", width=200, fit=ft.ImageFit.CONTAIN, error_content=ft.Icon(ft.Icons.BROKEN_IMAGE)), bgcolor="white" if app_state["tema"]=="dark" else None, border_radius=10, padding=5 if app_state["tema"]=="dark" else 0, shadow=ft.BoxShadow(blur_radius=20, color=c["sombra"], offset=ft.Offset(0, 5))),
+            ft.Container(content=ft.Image(src="logo.png", width=200, fit=ft.ImageFit.CONTAIN, error_content=ft.Icon(ft.Icons.BROKEN_IMAGE)), bgcolor="white" if app_state["tema"]=="dark" else None, border_radius=10, padding=5 if app_state["tema"]=="dark" else 0, shadow=ft.BoxShadow(blur_radius=20, color=c["sombra"], offset=ft.Offset(0, 5))),
             ft.Divider(height=10, color="transparent"),
             ft.Text("Bienvenido, Técnico", size=26, weight="bold", color=c["texto"]), ft.Text("Gestión de Visitas", size=14, color=c["texto_sec"], weight="w500")
         ], horizontal_alignment="center", spacing=5), bgcolor=c["superficie"], width=float("inf"), padding=ft.padding.only(top=50, bottom=30, left=20, right=20), border_radius=ft.border_radius.only(bottom_left=40, bottom_right=40), shadow=ft.BoxShadow(blur_radius=20, color="#15000000", offset=ft.Offset(0, 10)))
@@ -299,7 +284,9 @@ def main(page: ft.Page):
     def crear_boton_menu(c, titulo, subtitulo, icono, on_click_action):
         return ft.Container(content=ft.Row([ft.Column([ft.Text(titulo, size=18, weight="bold", color=COLOR_BLANCO), ft.Text(subtitulo, size=12, color="white70")], expand=True, alignment="center", spacing=3), ft.Icon(icono, size=40, color="white54")], alignment="spaceBetween"), gradient=ft.LinearGradient(begin=ft.alignment.top_left, end=ft.alignment.bottom_right, colors=[COLOR_PRIMARIO, COLOR_ACCENTO]), padding=20, border_radius=18, shadow=ft.BoxShadow(blur_radius=10, color=c["sombra"], offset=ft.Offset(0, 5)), on_click=on_click_action, ink=True)
 
-    # --- RUTEADOR ---
+    # ==========================================
+    # 5. RUTEADOR
+    # ==========================================
     def route_change(route):
         page.views.clear(); c = COLORES[app_state["tema"]]
         
@@ -313,6 +300,7 @@ def main(page: ft.Page):
             txt_obs = ft.TextField(label="Notas Adicionales (Opcional)", multiline=True, min_lines=2, filled=True, bgcolor=c["input_bg"], color=c["texto"], border_radius=10, text_size=12, border_color="transparent")
             col_usuarios = ft.Column(); state_usuarios = []; usuario_actual_foto = [None] 
             
+            # FILE PICKERS
             fp = ft.FilePicker(on_result=lambda e: actualizar_fotos_usuario(e)); page.overlay.append(fp)
             save_file_picker = ft.FilePicker(on_result=lambda e: notif_guardado(e)); page.overlay.append(save_file_picker)
 
@@ -328,7 +316,7 @@ def main(page: ft.Page):
                     u["control_galeria"].controls.clear()
                     for p in u["lista_fotos"]: u["control_galeria"].controls.append(ft.Container(content=ft.Image(src=p, width=50, height=50, fit=ft.ImageFit.COVER, border_radius=5), border=ft.border.all(1, c["borde"]), border_radius=5))
                     u["control_galeria"].update()
-                    page.open(ft.SnackBar(ft.Text(f"Fotos agregadas a {u['nombre']}"), bgcolor="green"))
+                    page.open(ft.SnackBar(ft.Text(f"Fotos agregadas"), bgcolor="green"))
 
             def cargar_usuarios(cliente):
                 col_usuarios.controls.clear(); state_usuarios.clear()
@@ -357,13 +345,18 @@ def main(page: ft.Page):
 
                     btn_checklist = ft.ElevatedButton("Abrir Checklist", icon=ft.Icons.CHECKLIST, bgcolor=COLOR_SECUNDARIO, color="white", on_click=abrir_checklist)
                     row_galeria = ft.Row(scroll="auto")
-                    # CAMBIO: FILE_TYPE=IMAGE
-                    def pick_evidence(e, idx=i):
+                    
+                    # BOTONES FOTOS SAMSUNG FIX
+                    def pick_camera(e, idx=i):
+                        usuario_actual_foto[0] = idx
+                        fp.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
+                    def pick_gallery(e, idx=i):
                         usuario_actual_foto[0] = idx
                         fp.pick_files(allow_multiple=True, file_type=ft.FilePickerFileType.IMAGE)
 
-                    btn_galeria = ft.IconButton(icon=ft.Icons.PHOTO_LIBRARY, tooltip="Galería", icon_color=COLOR_ACCENTO, on_click=pick_evidence)
-                    btn_camara = ft.IconButton(icon=ft.Icons.CAMERA_ALT, tooltip="Cámara", icon_color=COLOR_ACCENTO, on_click=pick_evidence)
+                    btn_galeria = ft.IconButton(icon=ft.Icons.PHOTO_LIBRARY, tooltip="Galería", icon_color=COLOR_ACCENTO, on_click=lambda e, idx=i: pick_gallery(e, idx))
+                    btn_camara = ft.IconButton(icon=ft.Icons.CAMERA_ALT, tooltip="Cámara", icon_color=COLOR_ACCENTO, on_click=lambda e, idx=i: pick_camera(e, idx))
+                    
                     cont_detalles = ft.Column([ft.Divider(), btn_checklist, ft.Divider(), ft.Row([btn_galeria, btn_camara, row_galeria])], visible=True)
                     def on_chk(e, tm=txt_motivo, tt=txt_trabajo, cd=cont_detalles):
                         v = e.control.value; tm.visible = not v; tt.visible = v; cd.visible = v; page.update()

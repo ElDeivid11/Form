@@ -2,3 +2,4 @@ flet
 fpdf2
 Pillow
 pytz
+flet-runtime

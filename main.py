@@ -18,10 +18,12 @@ from fpdf.enums import XPos, YPos
 from PIL import Image, ImageDraw
 
 # ==========================================
-# 1. CONFIGURACIÓN GENERAL
+# 1. CONFIGURACIÓN
 # ==========================================
 NOMBRE_EMPRESA_ONEDRIVE = "Tecnocomp Computacion Ltda" 
 NOMBRE_CARPETA_ONEDRIVE = "Visitas Terreno"
+
+# NOTA: En Android usaremos siempre tempfile, esta carpeta es solo referencia para PC
 CARPETA_LOCAL_INFORMES = "Informes"
 
 TAREAS_MANTENIMIENTO = [
@@ -33,6 +35,7 @@ CORREOS_POR_CLIENTE = {
     "Intermar": "contacto@intermar.cl", 
     "Las200": "admin@las200.cl"
 }
+# CREDENCIALES
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 EMAIL_REMITENTE = "enviodeinformestc1234@gmail.com" 
@@ -43,7 +46,7 @@ USUARIOS_POR_CLIENTE = {
     "Las200": ["Nieves Vallejos", "Jennifer No se cuanto", "Benjamin Practicas"]
 }
 
-# Paleta de Colores
+# COLORES
 COLOR_PRIMARIO = "#0583F2"
 COLOR_SECUNDARIO = "#2685BF"
 COLOR_ACCENTO = "#2BB9D9"
@@ -53,17 +56,11 @@ COLOR_BLANCO = "#FFFFFF"
 COLOR_TEXTO_GLOBAL = "#0D0D0D" 
 
 COLORES = {
-    "light": {
-        "fondo": "#F5F8FA", "superficie": "#FFFFFF", "texto": "#0D0D0D",
-        "texto_sec": "grey", "sombra": "#1A0583F2", "borde": "#E0E0E0", "input_bg": "#FFFFFF"
-    },
-    "dark": {
-        "fondo": "#121212", "superficie": "#1E1E1E", "texto": "#FFFFFF",
-        "texto_sec": "#B0B0B0", "sombra": "#00000000", "borde": "#333333", "input_bg": "#2C2C2C"
-    }
+    "light": {"fondo": "#F5F8FA", "superficie": "#FFFFFF", "texto": "#0D0D0D", "texto_sec": "grey", "sombra": "#1A0583F2", "borde": "#E0E0E0", "input_bg": "#FFFFFF"},
+    "dark": {"fondo": "#121212", "superficie": "#1E1E1E", "texto": "#FFFFFF", "texto_sec": "#B0B0B0", "sombra": "#00000000", "borde": "#333333", "input_bg": "#2C2C2C"}
 }
 
-# --- CLASE PDF PERSONALIZADA (SIN WARNINGS) ---
+# --- PDF CLASS ---
 class PDFReporte(FPDF):
     def header(self):
         self.set_fill_color(5, 131, 242)
@@ -75,14 +72,14 @@ class PDFReporte(FPDF):
         self.set_font('Helvetica', 'B', 16)
         self.set_text_color(255, 255, 255)
         self.set_xy(140, 15)
-        self.cell(60, 10, 'INFORME TÉCNICO', align='R', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.cell(60, 10, 'INFORME TÉCNICO', 0, 0, 'R')
         self.ln(45)
 
     def footer(self):
         self.set_y(-15)
         self.set_font('Helvetica', 'I', 8)
         self.set_text_color(128, 128, 128)
-        self.cell(0, 10, f'Página {self.page_no()}/{{nb}} - App Visitas Tecnocomp', align='C', new_x=XPos.RIGHT, new_y=YPos.TOP)
+        self.cell(0, 10, f'Página {self.page_no()}/{{nb}} - App Visitas Tecnocomp', 0, 0, 'C')
 
 def main(page: ft.Page):
     page.title = "Tecnocomp Mobile"
@@ -95,6 +92,7 @@ def main(page: ft.Page):
     page.theme_mode = ft.ThemeMode.LIGHT
     page.bgcolor = COLORES["light"]["fondo"]
     
+    # Variable para guardar ruta absoluta del último PDF
     ultimo_pdf_generado = ft.Text("", visible=False) 
 
     def cambiar_tema(e):
@@ -106,10 +104,11 @@ def main(page: ft.Page):
         route_change(page.route)
         page.update()
 
+    # Creación carpeta local (Solo PC)
     if sys.platform == "win32":
         if not os.path.exists(CARPETA_LOCAL_INFORMES): os.makedirs(CARPETA_LOCAL_INFORMES)
 
-    # --- BASE DE DATOS ---
+    # --- BASE DE DATOS (CON COLUMNA ENVIADO) ---
     def inicializar_db():
         con = sqlite3.connect("visitas.db")
         cur = con.cursor()
@@ -117,17 +116,19 @@ def main(page: ft.Page):
             CREATE TABLE IF NOT EXISTS reportes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 fecha TEXT, cliente TEXT, tecnico TEXT, observaciones TEXT,
-                imagen_path TEXT, pdf_path TEXT, detalles_usuarios TEXT
+                imagen_path TEXT, pdf_path TEXT, detalles_usuarios TEXT,
+                email_enviado INTEGER DEFAULT 0
             )
         """)
-        try: cur.execute("ALTER TABLE reportes ADD COLUMN pdf_path TEXT")
-        except: pass
-        try: cur.execute("ALTER TABLE reportes ADD COLUMN detalles_usuarios TEXT")
-        except: pass
+        # Migraciones
+        columnas = ["pdf_path", "detalles_usuarios", "email_enviado"]
+        for col in columnas:
+            try: cur.execute(f"ALTER TABLE reportes ADD COLUMN {col} TEXT") # SQLite permite TEXT para todo flexiblemente
+            except: pass
         con.commit(); con.close()
     inicializar_db()
 
-    # --- BACKEND ---
+    # --- UTILS ---
     def obtener_hora_chile():
         try: return datetime.datetime.now(pytz.timezone('Chile/Continental'))
         except: return datetime.datetime.now()
@@ -139,39 +140,44 @@ def main(page: ft.Page):
 
     def obtener_historial():
         con = sqlite3.connect("visitas.db"); cur = con.cursor()
-        cur.execute("SELECT id, fecha, cliente, tecnico, observaciones, pdf_path FROM reportes ORDER BY id DESC")
+        # Seleccionamos también el estado del email
+        cur.execute("SELECT id, fecha, cliente, tecnico, observaciones, pdf_path, email_enviado FROM reportes ORDER BY id DESC")
         datos = cur.fetchall(); con.close(); return datos
 
+    def actualizar_estado_email(id_reporte, estado):
+        con = sqlite3.connect("visitas.db"); cur = con.cursor()
+        cur.execute("UPDATE reportes SET email_enviado = ? WHERE id = ?", (estado, id_reporte))
+        con.commit(); con.close()
+
     def enviar_correo_smtp(ruta_pdf, cliente, tecnico):
-        if not os.path.exists(ruta_pdf): return False, "PDF no existe."
+        # Verificación robusta de existencia
+        if not ruta_pdf or not os.path.exists(ruta_pdf): 
+            return False, "Archivo PDF no encontrado (¿Borrado?)"
+        
         dest = CORREOS_POR_CLIENTE.get(cliente, "")
-        if not dest: return False, f"No hay correo para {cliente}"
-        msg = MIMEMultipart(); msg['From'] = EMAIL_REMITENTE; msg['To'] = dest
+        if not dest: return False, f"No hay correo configurado para {cliente}"
+        
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_REMITENTE; msg['To'] = dest
         msg['Subject'] = f"Reporte - {cliente} - {datetime.datetime.now().strftime('%d/%m')}"
         cuerpo = f"""<html><body><h2 style="color:{COLOR_PRIMARIO};">Reporte de Visita</h2><p>Adjunto informe técnico.</p></body></html>"""
         msg.attach(MIMEText(cuerpo, 'html'))
+        
         try:
             with open(ruta_pdf, "rb") as att:
                 part = MIMEBase("application", "octet-stream"); part.set_payload(att.read())
             encoders.encode_base64(part)
             part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(ruta_pdf)}")
             msg.attach(part)
-            server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT); server.starttls()
-            server.login(EMAIL_REMITENTE, EMAIL_PASSWORD); server.sendmail(EMAIL_REMITENTE, dest, msg.as_string()); server.quit()
-            return True, f"Enviado a {dest}"
-        except Exception as e: return False, f"Error Envío: {e}"
-
-    def copiar_a_onedrive(ruta_pdf):
-        if sys.platform != "win32": return False, "OneDrive sync solo en PC"
-        if not ruta_pdf or not os.path.exists(ruta_pdf): return False, "PDF no existe"
-        home = os.path.expanduser("~")
-        posibles = [os.path.join(home, f"OneDrive - {NOMBRE_EMPRESA_ONEDRIVE}"), os.path.join(home, "OneDrive")]
-        root = next((p for p in posibles if os.path.exists(p)), None)
-        if not root: return False, "No OneDrive"
-        dest = os.path.join(root, NOMBRE_CARPETA_ONEDRIVE)
-        if not os.path.exists(dest): os.makedirs(dest)
-        try: shutil.copy2(ruta_pdf, os.path.join(dest, os.path.basename(ruta_pdf))); return True, "Sync OK"
-        except Exception as e: return False, str(e)
+            
+            server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+            server.starttls()
+            server.login(EMAIL_REMITENTE, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_REMITENTE, dest, msg.as_string())
+            server.quit()
+            return True, f"Enviado correctamente a {dest}"
+        except Exception as e:
+            return False, f"Fallo de red/SMTP: {str(e)}"
 
     def guardar_firma_img(trazos):
         if not trazos: return None
@@ -183,45 +189,33 @@ def main(page: ft.Page):
             elif len(t) == 1: draw.point(t[0], fill="black")
         img.save(path); return path
 
-    # --- GENERADOR PDF (SYNTAX ACTUALIZADA) ---
     def generar_pdf(cliente, tecnico, obs, path_firma, datos_usuarios):
         pdf = PDFReporte(orientation='P', unit='mm', format='A4'); pdf.alias_nb_pages(); pdf.add_page()
+        
+        # Cabecera Datos
         pdf.set_fill_color(240, 240, 240); pdf.rect(10, 48, 190, 28, 'F')
-        
-        pdf.set_xy(15, 53)
-        pdf.set_font("Helvetica", "B", 10); pdf.set_text_color(100, 100, 100); pdf.cell(25, 6, "CLIENTE:", new_x=XPos.RIGHT, new_y=YPos.TOP)
-        pdf.set_font("Helvetica", "B", 11); pdf.set_text_color(0, 0, 0); pdf.cell(0, 6, cliente, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        
-        pdf.set_x(15)
-        pdf.set_font("Helvetica", "B", 10); pdf.set_text_color(100, 100, 100); pdf.cell(25, 6, "TÉCNICO:", new_x=XPos.RIGHT, new_y=YPos.TOP)
-        pdf.set_font("Helvetica", "", 11); pdf.set_text_color(0, 0, 0); pdf.cell(0, 6, tecnico, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        
-        pdf.set_x(15)
-        pdf.set_font("Helvetica", "B", 10); pdf.set_text_color(100, 100, 100); pdf.cell(25, 6, "FECHA:", new_x=XPos.RIGHT, new_y=YPos.TOP)
-        pdf.set_font("Helvetica", "", 11); pdf.set_text_color(0, 0, 0); 
-        pdf.cell(0, 6, obtener_hora_chile().strftime('%d/%m/%Y %H:%M'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-
+        pdf.set_xy(15, 53); pdf.set_font("Helvetica", "B", 10); pdf.set_text_color(100, 100, 100); pdf.cell(25, 6, "CLIENTE:", 0, 0)
+        pdf.set_font("Helvetica", "B", 11); pdf.set_text_color(0, 0, 0); pdf.cell(0, 6, cliente, 0, 1)
+        pdf.set_x(15); pdf.set_font("Helvetica", "B", 10); pdf.set_text_color(100, 100, 100); pdf.cell(25, 6, "TÉCNICO:", 0, 0)
+        pdf.set_font("Helvetica", "", 11); pdf.set_text_color(0, 0, 0); pdf.cell(0, 6, tecnico, 0, 1)
+        pdf.set_x(15); pdf.set_font("Helvetica", "B", 10); pdf.set_text_color(100, 100, 100); pdf.cell(25, 6, "FECHA:", 0, 0)
+        pdf.set_font("Helvetica", "", 11); pdf.set_text_color(0, 0, 0); pdf.cell(0, 6, obtener_hora_chile().strftime('%d/%m/%Y %H:%M'), 0, 1)
         pdf.ln(15)
-        pdf.set_font("Helvetica", "B", 12); pdf.set_text_color(5, 131, 242); pdf.cell(0, 8, "BITÁCORA DE ATENCIÓN", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='L'); pdf.ln(2)
+
+        # Cuerpo
+        pdf.set_font("Helvetica", "B", 12); pdf.set_text_color(5, 131, 242); pdf.cell(0, 8, "BITÁCORA DE ATENCIÓN", 0, 1, 'L'); pdf.ln(2)
         pdf.set_draw_color(200, 200, 200); pdf.line(10, pdf.get_y(), 200, pdf.get_y()); pdf.ln(5)
 
         for u in datos_usuarios:
             if pdf.get_y() > 220: pdf.add_page()
-            pdf.set_font("Helvetica", "B", 11); pdf.set_text_color(0, 0, 0); pdf.cell(140, 8, u['nombre'], new_x=XPos.RIGHT, new_y=YPos.TOP, align='L')
+            pdf.set_font("Helvetica", "B", 11); pdf.set_text_color(0, 0, 0); pdf.cell(140, 8, u['nombre'], 0, 0, 'L')
             pdf.set_font("Helvetica", "B", 9)
-            if u['atendido']:
-                pdf.set_fill_color(220, 255, 220); pdf.set_text_color(0, 100, 0)
-                pdf.cell(50, 8, "ATENDIDO", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C', fill=True)
-            else:
-                pdf.set_fill_color(255, 220, 220); pdf.set_text_color(180, 0, 0)
-                pdf.cell(50, 8, "NO ATENDIDO", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C', fill=True)
-            
+            if u['atendido']: pdf.set_fill_color(220, 255, 220); pdf.set_text_color(0, 100, 0); pdf.cell(50, 8, "ATENDIDO", 0, 1, 'C', True)
+            else: pdf.set_fill_color(255, 220, 220); pdf.set_text_color(180, 0, 0); pdf.cell(50, 8, "NO ATENDIDO", 0, 1, 'C', True)
             pdf.set_text_color(0, 0, 0); pdf.ln(2); pdf.set_x(10); pdf.set_font("Helvetica", "", 10)
-            texto = f"Trabajo: {u['trabajo']}" if u['atendido'] else f"Motivo: {u['motivo']}"
-            pdf.multi_cell(0, 5, texto, align='L')
-
+            texto = f"Trabajo: {u['trabajo']}" if u['atendido'] else f"Motivo: {u['motivo']}"; pdf.multi_cell(0, 5, texto, 0, 'L')
             if u['fotos'] and u['atendido']:
-                pdf.ln(2); pdf.set_font("Helvetica", "B", 9); pdf.set_text_color(5, 131, 242); pdf.cell(0, 4, "Evidencias Adjuntas:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.ln(2); pdf.set_font("Helvetica", "B", 9); pdf.set_text_color(5, 131, 242); pdf.cell(0, 4, "Evidencias Adjuntas:", 0, 1)
                 x_curr, y_curr = 10, pdf.get_y() + 1
                 for fp in u['fotos']:
                     if os.path.exists(fp):
@@ -230,22 +224,21 @@ def main(page: ft.Page):
                         try: pdf.image(fp, x=x_curr, y=y_curr, h=35); x_curr += 48
                         except: pass
                 pdf.set_y(y_curr + 40) 
-
             pdf.ln(5); pdf.set_draw_color(230, 230, 230); pdf.line(10, pdf.get_y(), 200, pdf.get_y()); pdf.ln(5)
 
         if pdf.get_y() > 220: pdf.add_page()
-        pdf.set_font("Helvetica", "B", 12); pdf.set_text_color(5, 131, 242); pdf.cell(0, 8, "OBSERVACIONES ADICIONALES", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='L')
-        pdf.set_font("Helvetica", "", 10); pdf.set_text_color(0,0,0); pdf.multi_cell(0, 6, obs if obs else "Sin observaciones adicionales.", align='L'); pdf.ln(10)
-        
+        pdf.set_font("Helvetica", "B", 12); pdf.set_text_color(5, 131, 242); pdf.cell(0, 8, "OBSERVACIONES ADICIONALES", 0, 1, 'L')
+        pdf.set_font("Helvetica", "", 10); pdf.set_text_color(0,0,0); pdf.multi_cell(0, 6, obs if obs else "Sin observaciones adicionales.", 0, 'L'); pdf.ln(10)
         if path_firma and os.path.exists(path_firma):
             if pdf.get_y() > 200: pdf.add_page()
-            pdf.set_font("Helvetica", "B", 11); pdf.cell(0, 6, "CONFORMIDAD DEL SERVICIO", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='L'); pdf.image(path_firma, w=50)
+            pdf.set_font("Helvetica", "B", 11); pdf.cell(0, 6, "CONFORMIDAD DEL SERVICIO", 0, 1, 'L'); pdf.image(path_firma, w=50)
 
+        # GUARDA EN TEMP (Seguro para Android)
         temp_dir = tempfile.gettempdir()
         nombre = f"Reporte_{cliente}_{obtener_hora_chile().strftime('%Y%m%d_%H%M%S')}.pdf"
-        ruta = os.path.join(temp_dir, nombre)
-        pdf.output(ruta)
-        return ruta
+        ruta_absoluta = os.path.join(temp_dir, nombre)
+        pdf.output(ruta_absoluta)
+        return ruta_absoluta
 
     # --- UI HELPERS ---
     def crear_header(c):
@@ -255,7 +248,7 @@ def main(page: ft.Page):
                 ft.IconButton(icon=ft.Icons.DARK_MODE if app_state["tema"]=="light" else ft.Icons.LIGHT_MODE, icon_color=c["texto"], on_click=cambiar_tema)
             ], alignment="spaceBetween"),
             ft.Divider(height=10, color="transparent"),
-            ft.Container(content=ft.Image(src="logo2.png", width=200, fit=ft.ImageFit.CONTAIN, error_content=ft.Icon(ft.Icons.BROKEN_IMAGE)), bgcolor="white" if app_state["tema"]=="dark" else None, border_radius=10, padding=5 if app_state["tema"]=="dark" else 0, shadow=ft.BoxShadow(blur_radius=20, color=c["sombra"], offset=ft.Offset(0, 5))),
+            ft.Container(content=ft.Image(src="logo.png", width=200, fit=ft.ImageFit.CONTAIN, error_content=ft.Icon(ft.Icons.BROKEN_IMAGE)), bgcolor="white" if app_state["tema"]=="dark" else None, border_radius=10, padding=5 if app_state["tema"]=="dark" else 0, shadow=ft.BoxShadow(blur_radius=20, color=c["sombra"], offset=ft.Offset(0, 5))),
             ft.Divider(height=10, color="transparent"),
             ft.Text("Bienvenido, Técnico", size=26, weight="bold", color=c["texto"]), ft.Text("Gestión de Visitas", size=14, color=c["texto_sec"], weight="w500")
         ], horizontal_alignment="center", spacing=5), bgcolor=c["superficie"], width=float("inf"), padding=ft.padding.only(top=50, bottom=30, left=20, right=20), border_radius=ft.border_radius.only(bottom_left=40, bottom_right=40), shadow=ft.BoxShadow(blur_radius=20, color="#15000000", offset=ft.Offset(0, 10)))
@@ -270,26 +263,25 @@ def main(page: ft.Page):
     def route_change(route):
         page.views.clear(); c = COLORES[app_state["tema"]]
         
-        # DASHBOARD
         page.views.append(ft.View("/", controls=[crear_header(c), ft.Container(content=ft.Column([crear_stats_card(c), crear_boton_menu(c, "Nueva Visita", "Crear reporte y firmar", ft.Icons.ADD_LOCATION_ALT_ROUNDED, lambda _: page.go("/nueva_visita")), ft.Divider(height=15, color="transparent"), ft.Container(content=ft.Row([ft.Column([ft.Text("Historial", size=18, weight="bold", color=COLOR_BLANCO), ft.Text("Ver reportes anteriores", size=12, color="white70")], expand=True, alignment="center", spacing=3), ft.Icon(ft.Icons.HISTORY, size=40, color="white54")], alignment="spaceBetween"), gradient=ft.LinearGradient(colors=["#F2994A", "#F2C94C"]), padding=20, border_radius=18, shadow=ft.BoxShadow(blur_radius=10, color="#33F2994A", offset=ft.Offset(0, 5)), on_click=lambda _: page.go("/historial"), ink=True)], horizontal_alignment="center"), padding=20, expand=True, alignment=ft.alignment.top_center)], bgcolor=c["fondo"], padding=0))
 
-        # FORMULARIO
         if page.route == "/nueva_visita":
             datos_firma = {"trazos": []}
             txt_tec = ft.TextField(label="Técnico", filled=True, bgcolor=c["input_bg"], color=c["texto"], border_radius=10, prefix_icon=ft.Icons.PERSON, border_color="transparent")
             txt_obs = ft.TextField(label="Notas Adicionales (Opcional)", multiline=True, min_lines=2, filled=True, bgcolor=c["input_bg"], color=c["texto"], border_radius=10, text_size=12, border_color="transparent")
             col_usuarios = ft.Column(); state_usuarios = []; usuario_actual_foto = [None] 
             
-            # FILE PICKERS (Ámbito Global en route_change)
-            fp = ft.FilePicker(on_result=lambda e: actualizar_fotos_usuario(e))
-            page.overlay.append(fp)
-            save_file_picker = ft.FilePicker(on_result=lambda e: notif_guardado(e))
-            page.overlay.append(save_file_picker)
+            # PICKERS
+            fp = ft.FilePicker(on_result=lambda e: actualizar_fotos_usuario(e)); page.overlay.append(fp)
+            save_file_picker = ft.FilePicker(on_result=lambda e: notif_guardado(e)); page.overlay.append(save_file_picker)
 
             def notif_guardado(e):
                 if e.path:
-                    try: shutil.copy2(ultimo_pdf_generado.value, e.path); page.open(ft.SnackBar(ft.Text(f"PDF Guardado"), bgcolor="green"))
-                    except Exception as ex: page.open(ft.SnackBar(ft.Text(f"Error: {ex}"), bgcolor="red"))
+                    try: 
+                        shutil.copy2(ultimo_pdf_generado.value, e.path)
+                        page.open(ft.SnackBar(ft.Text(f"PDF Guardado en dispositivo"), bgcolor="green"))
+                    except Exception as ex: 
+                        page.open(ft.SnackBar(ft.Text(f"Error guardando: {ex}"), bgcolor="red"))
 
             def actualizar_fotos_usuario(e):
                 if e.files and usuario_actual_foto[0] is not None:
@@ -324,16 +316,18 @@ def main(page: ft.Page):
                             lista_checks.append(ft.Checkbox(label=t, value=bool(dic_u[t]), on_change=on_ch))
                         dlg_tareas = ft.AlertDialog(title=ft.Text(f"Tareas: {nom_u}"), content=ft.Column(lista_checks, height=300, scroll="auto"), actions=[ft.TextButton("Listo", on_click=lambda e: page.close(dlg_tareas))])
                         page.open(dlg_tareas)
+
                     btn_checklist = ft.ElevatedButton("Abrir Checklist", icon=ft.Icons.CHECKLIST, bgcolor=COLOR_SECUNDARIO, color="white", on_click=abrir_checklist)
                     row_galeria = ft.Row(scroll="auto")
                     
+                    # FILE_TYPE=ANY PARA FORZAR MENU ANDROID
                     def pick_evidence(e, idx=i):
                         usuario_actual_foto[0] = idx
-                        fp.pick_files(allow_multiple=True, file_type=ft.FilePickerFileType.IMAGE)
+                        fp.pick_files(allow_multiple=True, file_type=ft.FilePickerFileType.ANY)
 
-                    btn_galeria = ft.IconButton(icon=ft.Icons.PHOTO_LIBRARY, tooltip="Galería", icon_color=COLOR_ACCENTO, on_click=pick_evidence)
-                    btn_camara = ft.IconButton(icon=ft.Icons.CAMERA_ALT, tooltip="Cámara", icon_color=COLOR_ACCENTO, on_click=pick_evidence)
-                    cont_detalles = ft.Column([ft.Divider(), btn_checklist, ft.Divider(), ft.Row([btn_galeria, btn_camara, row_galeria])], visible=True)
+                    btn_fotos = ft.ElevatedButton("Adjuntar Evidencia", icon=ft.Icons.ADD_A_PHOTO, bgcolor=COLOR_ACCENTO, color="white", on_click=pick_evidence)
+                    cont_detalles = ft.Column([ft.Divider(), btn_checklist, ft.Divider(), ft.Row([btn_fotos, row_galeria])], visible=True)
+                    
                     def on_chk(e, tm=txt_motivo, tt=txt_trabajo, cd=cont_detalles):
                         v = e.control.value; tm.visible = not v; tt.visible = v; cd.visible = v; page.update()
                     chk.on_change = on_chk
@@ -352,8 +346,8 @@ def main(page: ft.Page):
                 dlg_firma = ft.AlertDialog(title=ft.Text("Firmar Conformidad"), content=ft.Container(content=ft.Stack([canvas, gd]), border=ft.border.all(1, "grey"), border_radius=10, width=300, height=200, bgcolor="white"), actions=[ft.TextButton("Limpiar", on_click=lambda e: [datos_firma["trazos"].clear(), canvas.shapes.clear(), canvas.update()]), ft.ElevatedButton("Confirmar y Guardar", on_click=confirmar_click, bgcolor=COLOR_PRIMARIO, color="white")])
                 page.open(dlg_firma)
 
-            btn_ver = ft.ElevatedButton("Guardar PDF", icon=ft.Icons.DOWNLOAD, visible=False, bgcolor="#FF5722", color="white")
-            btn_correo = ft.ElevatedButton("Enviar Correo", icon=ft.Icons.EMAIL, visible=False, bgcolor="#0072C6", color="white")
+            btn_ver = ft.ElevatedButton("Guardar PDF en Tablet", icon=ft.Icons.DOWNLOAD, visible=False, bgcolor="#FF5722", color="white")
+            btn_correo = ft.ElevatedButton("Reenviar Correo", icon=ft.Icons.EMAIL, visible=False, bgcolor="#0072C6", color="white")
 
             def guardar(e):
                 try:
@@ -362,16 +356,31 @@ def main(page: ft.Page):
                         fotos = u["lista_fotos"]; todas_fotos.extend(fotos)
                         datos_finales.append({"nombre": u["nombre"], "atendido": u["check"].value, "motivo": u["motivo"].value, "trabajo": u["trabajo"].value, "fotos": fotos})
                     json_usr = json.dumps(datos_finales); firma = guardar_firma_img(datos_firma["trazos"]) if datos_firma["trazos"] else None
-                    pdf = generar_pdf(dd_cli.value, txt_tec.value, txt_obs.value, firma, datos_finales); ultimo_pdf_generado.value = pdf
+                    pdf_abs_path = generar_pdf(dd_cli.value, txt_tec.value, txt_obs.value, firma, datos_finales); ultimo_pdf_generado.value = pdf_abs_path
+                    
+                    # Intento de envío de correo (con manejo de error offline)
+                    enviado = 1 if enviar_correo_smtp(pdf_abs_path, dd_cli.value, txt_tec.value)[0] else 0
+                    
                     con = sqlite3.connect("visitas.db"); cur = con.cursor()
-                    cur.execute("INSERT INTO reportes (fecha, cliente, tecnico, observaciones, imagen_path, pdf_path, detalles_usuarios) VALUES (?, ?, ?, ?, ?, ?, ?)", (obtener_hora_chile().strftime('%Y-%m-%d %H:%M:%S'), dd_cli.value, txt_tec.value, txt_obs.value, json.dumps(todas_fotos), pdf, json_usr))
+                    cur.execute("INSERT INTO reportes (fecha, cliente, tecnico, observaciones, imagen_path, pdf_path, detalles_usuarios, email_enviado) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
+                                (obtener_hora_chile().strftime('%Y-%m-%d %H:%M:%S'), dd_cli.value, txt_tec.value, txt_obs.value, json.dumps(todas_fotos), pdf_abs_path, json_usr, enviado))
                     con.commit(); con.close()
-                    page.open(ft.SnackBar(ft.Text(f"Reporte Generado"), bgcolor="green"))
-                    def guardar_pdf_device(e): save_file_picker.save_file(file_name=os.path.basename(pdf))
-                    btn_ver.visible = True; btn_ver.on_click = guardar_pdf_device; btn_ver.update()
-                    btn_correo.visible = True; btn_correo.on_click = lambda _: [page.open(ft.SnackBar(ft.Text(enviar_correo_smtp(pdf, dd_cli.value, txt_tec.value)[1])))]; btn_correo.update()
+                    
+                    msg_guardado = "Guardado y Enviado ✅" if enviado else "Guardado OFFLINE ⚠️"
+                    page.open(ft.SnackBar(ft.Text(msg_guardado), bgcolor="green" if enviado else "orange"))
+                    
+                    # Activar botones post-guardado
+                    def guardar_en_tablet(e): save_file_picker.save_file(file_name=os.path.basename(pdf_abs_path))
+                    btn_ver.visible = True; btn_ver.on_click = guardar_en_tablet
+                    
+                    def reintentar_correo(e):
+                         ok, msg = enviar_correo_smtp(pdf_abs_path, dd_cli.value, txt_tec.value)
+                         page.open(ft.SnackBar(ft.Text(msg), bgcolor="blue" if ok else "red"))
+                    btn_correo.visible = True; btn_correo.on_click = reintentar_correo
+                    
+                    btn_ver.update(); btn_correo.update()
                     txt_obs.value = ""; cargar_usuarios(dd_cli.value); page.update()
-                except Exception as ex: page.open(ft.SnackBar(ft.Text(f"Error: {ex}"), bgcolor="red"))
+                except Exception as ex: page.open(ft.SnackBar(ft.Text(f"Error Crítico: {ex}"), bgcolor="red"))
 
             btn_main_guardar = ft.ElevatedButton("FIRMAR Y FINALIZAR", on_click=lambda e: abrir_dialogo_firma(e) if dd_cli.value and txt_tec.value else page.open(ft.SnackBar(ft.Text("Faltan datos"), bgcolor="red")), height=55, style=ft.ButtonStyle(bgcolor=COLOR_PRIMARIO, color="white", shape=ft.RoundedRectangleBorder(radius=12), text_style=ft.TextStyle(size=16, weight="bold")))
             page.views.append(ft.View("/nueva_visita", controls=[ft.AppBar(title=ft.Text("Nueva Visita", color=c["texto"]), bgcolor=c["superficie"], color=COLOR_PRIMARIO, elevation=0), ft.Container(content=ft.Column([ft.Container(content=ft.Column([ft.Text("Datos Generales", weight="bold", color=COLOR_PRIMARIO), dd_cli, txt_tec]), padding=15, bgcolor=c["superficie"], border_radius=10, shadow=ft.BoxShadow(blur_radius=5, color=c["sombra"])), ft.Container(content=ft.Column([ft.Text("Bitácora por Usuario", weight="bold", color=COLOR_PRIMARIO), col_usuarios]), padding=15, bgcolor=c["superficie"], border_radius=10, shadow=ft.BoxShadow(blur_radius=5, color=c["sombra"])), ft.Container(content=ft.Column([ft.Text("Notas Adicionales", weight="bold", color=COLOR_PRIMARIO), txt_obs]), padding=15, bgcolor=c["superficie"], border_radius=10, shadow=ft.BoxShadow(blur_radius=5, color=c["sombra"])), btn_main_guardar, ft.Row([btn_ver, btn_correo], alignment="center", wrap=True)], scroll="auto"), padding=10, expand=True)], bgcolor=c["fondo"]))
@@ -381,15 +390,37 @@ def main(page: ft.Page):
             if not datos: lista_items.append(ft.Text("Vacío", color="grey"))
             else:
                 for row in datos:
-                    id_rep, fecha, cli, tec, obs, pdf = row
+                    id_rep, fecha, cli, tec, obs, pdf, enviado = row
                     ex = pdf and os.path.exists(pdf)
+                    
                     def descargar_historial(e, p=pdf):
                         if p and os.path.exists(p):
-                            ultimo_pdf_generado.value = p 
+                            ultimo_pdf_generado.value = p
                             save_file_picker.save_file(file_name=os.path.basename(p))
-                        else: page.open(ft.SnackBar(ft.Text("No encontrado"), bgcolor="red"))
-                    lista_items.append(ft.Container(content=ft.Column([ft.Row([ft.Icon(ft.Icons.DESCRIPTION, color=COLOR_PRIMARIO if ex else "grey"), ft.Text(f"{cli}", weight="bold", color=c["texto"]), ft.Text(f"{fecha}", size=12, color="grey")], alignment="spaceBetween"), ft.Text(f"Técnico: {tec}", color=c["texto"]), ft.TextButton("Descargar PDF", on_click=descargar_historial, disabled=not ex)]), padding=15, bgcolor=c["superficie"], border_radius=12, shadow=ft.BoxShadow(blur_radius=5, color=c["sombra"]), margin=ft.margin.only(bottom=10)))
+                        else: page.open(ft.SnackBar(ft.Text("Archivo no encontrado en tablet"), bgcolor="red"))
+                    
+                    def reenviar_historial(e, p=pdf, c=cli, t=tec, id_r=id_rep):
+                        if not p or not os.path.exists(p): page.open(ft.SnackBar(ft.Text("PDF Perdido"), bgcolor="red")); return
+                        page.open(ft.SnackBar(ft.Text("Enviando..."), bgcolor="blue"))
+                        ok, msg = enviar_correo_smtp(p, c, t)
+                        if ok: 
+                            actualizar_estado_email(id_r, 1)
+                            page.open(ft.SnackBar(ft.Text("Enviado con éxito"), bgcolor="green"))
+                        else: page.open(ft.SnackBar(ft.Text(f"Fallo: {msg}"), bgcolor="red"))
+
+                    icon_env = ft.Icon(ft.Icons.CHECK_CIRCLE, color="green") if enviado else ft.Icon(ft.Icons.ERROR, color="red")
+                    
+                    lista_items.append(ft.Container(content=ft.Column([
+                        ft.Row([ft.Icon(ft.Icons.DESCRIPTION, color=COLOR_PRIMARIO if ex else "grey"), ft.Text(f"{cli}", weight="bold", color=c["texto"]), icon_env], alignment="spaceBetween"),
+                        ft.Text(f"Fecha: {fecha} | Técnico: {tec}", size=12, color="grey"),
+                        ft.Row([
+                            ft.TextButton("Descargar", icon=ft.Icons.DOWNLOAD, on_click=descargar_historial, disabled=not ex),
+                            ft.TextButton("Reenviar Correo", icon=ft.Icons.SEND, on_click=lambda e, p=pdf, c=cli, t=tec, i=id_rep: reenviar_historial(e, p, c, t, i))
+                        ], alignment="center")
+                    ]), padding=15, bgcolor=c["superficie"], border_radius=12, shadow=ft.BoxShadow(blur_radius=5, color=c["sombra"]), margin=ft.margin.only(bottom=10)))
+            
             page.views.append(ft.View("/historial", controls=[ft.AppBar(title=ft.Text("Historial", color=c["texto"]), bgcolor=c["superficie"], color=COLOR_PRIMARIO, elevation=0), ft.Container(content=ft.ListView(controls=lista_items, spacing=10, padding=20), expand=True)], bgcolor=c["fondo"]))
+        
         page.update()
 
     def view_pop(view): page.views.pop(); top_view = page.views[-1]; page.go(top_view.route)

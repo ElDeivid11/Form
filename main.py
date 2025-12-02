@@ -283,7 +283,7 @@ def main(page: f.Page):
                     pdf_path = pdf_generator.generar_pdf(dd_cli.value, dd_tec.value, txt_obs.value, firma, datos_finales)
                     ultimo_pdf_generado.value = pdf_path
                     
-                    # 3. INTENTAR ENVIAR CORREO (OFFLINE SAFE)
+                    # 3. INTENTAR ENVIAR CORREO (MICROSOFT GRAPH)
                     estado_envio = 0
                     msg_envio = "Guardado localmente. Pendiente de envío."
                     color_snack = "orange"
@@ -291,16 +291,17 @@ def main(page: f.Page):
                     try:
                         email_destino = database.obtener_correo_cliente(dd_cli.value)
                         config.CORREOS_POR_CLIENTE[dd_cli.value] = email_destino # Hack compatibilidad
-                        envio_ok, msg_smtp = utils.enviar_correo_smtp(pdf_path, dd_cli.value, dd_tec.value)
+                        
+                        # --- CAMBIO A GRAPH ---
+                        envio_ok, msg_graph = utils.enviar_correo_graph(pdf_path, dd_cli.value, dd_tec.value)
                         if envio_ok:
                             estado_envio = 1
-                            msg_envio = "Guardado y Enviado correctamente."
+                            msg_envio = "Guardado y Enviado (Oficial)."
                             color_snack = "green"
                         else:
-                            msg_envio = f"Guardado. Error envío: {msg_smtp}"
+                            msg_envio = f"Guardado. Error envío: {msg_graph}"
                     except Exception as e_mail:
-                        print(f"Error SMTP: {e_mail}")
-                        # No hacemos nada, estado_envio queda en 0
+                        print(f"Error Graph: {e_mail}")
                     
                     # 4. GUARDAR EN DB
                     database.guardar_reporte(utils.obtener_hora_chile().strftime('%Y-%m-%d %H:%M:%S'), dd_cli.value, dd_tec.value, txt_obs.value, json.dumps(todas_fotos), pdf_path, json_usr, estado_envio)
@@ -356,7 +357,8 @@ def main(page: f.Page):
                         email_dest = database.obtener_correo_cliente(p_cli)
                         config.CORREOS_POR_CLIENTE[p_cli] = email_dest
                         
-                        ok, msg = utils.enviar_correo_smtp(p_pdf, p_cli, p_tec)
+                        # --- CAMBIO A GRAPH ---
+                        ok, msg = utils.enviar_correo_graph(p_pdf, p_cli, p_tec)
                         if ok:
                             database.actualizar_estado_email(p_id, 1)
                             enviados += 1
@@ -391,7 +393,8 @@ def main(page: f.Page):
                                     firma_ui = f.Image(src=u['firma'], width=150) if u.get('firma') else f.Container()
                                     usuarios_ui.append(f.Container(content=f.Column([f.Text(f"{st} {u['nombre']}", weight="bold", color=c["texto"]), f.Text(desc, size=12, color=c["texto_sec"]), fotos_ui, f.Text("Firma:", size=10) if u.get('firma') else f.Container(), firma_ui, f.Divider()]), padding=10, border=f.border.all(1, "grey300"), border_radius=8, bgcolor=c["input_bg"]))
                             except: pass
-                        dlg = f.AlertDialog(content=f.Container(content=f.Column([header_modal, f.Text(f"Tec: {_te}", color=c["texto"], weight="bold"), f.Divider(), f.Column(usuarios_ui, scroll="auto", expand=True), f.Text(f"Nota: {_ob}", italic=True, color=c["texto_sec"])], scroll="auto"), width=600, height=700), actions=[f.TextButton("Cerrar", on_click=lambda e: page.close(dlg)), f.TextButton("Reenviar", icon=f.Icons.SEND, on_click=lambda e: [page.open(f.SnackBar(f.Text(utils.enviar_correo_smtp(_pd, _cl, _te)[1]), bgcolor="blue")), database.actualizar_estado_email(_id, 1), page.go("/dummy"), page.go("/historial")])], inset_padding=10)
+                        # CAMBIO A GRAPH TAMBIÉN EN REENVÍO
+                        dlg = f.AlertDialog(content=f.Container(content=f.Column([header_modal, f.Text(f"Tec: {_te}", color=c["texto"], weight="bold"), f.Divider(), f.Column(usuarios_ui, scroll="auto", expand=True), f.Text(f"Nota: {_ob}", italic=True, color=c["texto_sec"])], scroll="auto"), width=600, height=700), actions=[f.TextButton("Cerrar", on_click=lambda e: page.close(dlg)), f.TextButton("Reenviar", icon=f.Icons.SEND, on_click=lambda e: [page.open(f.SnackBar(f.Text(utils.enviar_correo_graph(_pd, _cl, _te)[1]), bgcolor="blue")), database.actualizar_estado_email(_id, 1), page.go("/dummy"), page.go("/historial")])], inset_padding=10)
                         page.open(dlg)
                     
                     lista_items.append(f.Container(content=f.Column([f.Row([f.Row([f.Container(content=f.Icon(f.Icons.DESCRIPTION, color=config.COLOR_BLANCO), bgcolor=config.COLOR_PRIMARIO if ex else "grey", padding=10, border_radius=12), f.Column([f.Text(cli, weight="bold", color=c["texto"]), f.Text(fecha, size=12, color=c["texto_sec"])], spacing=0)]), icon_env], alignment="spaceBetween"), f.Divider(color=c["borde"]), f.Row([f.Text(f"Tec: {tec}", color=c["texto"]), f.IconButton(icon=f.Icons.VISIBILITY, icon_color=config.COLOR_PRIMARIO, on_click=ver_detalle_modal), f.TextButton("Descargar PDF", on_click=lambda e, p=pdf_p: save_file_picker.save_file(file_name=os.path.basename(p)), disabled=not ex)], alignment="end")]), padding=15, bgcolor=c["card_bg"], border_radius=12, shadow=f.BoxShadow(blur_radius=5, color=c["sombra"]), margin=f.margin.only(bottom=10)))
@@ -403,7 +406,16 @@ def main(page: f.Page):
         
         page.update()
 
-    def view_pop(view): page.views.pop(); top_view = page.views[-1]; page.go(top_view.route)
-    page.on_route_change = route_change; page.on_view_pop = view_pop; page.go(page.route)
+    def view_pop(view):
+        page.views.pop()
+        if len(page.views) > 0:
+            top_view = page.views[-1]
+            page.go(top_view.route)
+        else:
+            page.go("/")
+
+    page.on_route_change = route_change
+    page.on_view_pop = view_pop
+    page.go(page.route)
 
 f.app(target=main)

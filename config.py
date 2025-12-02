@@ -25,13 +25,19 @@ USUARIOS_POR_CLIENTE = {
     "Las200": ["Nieves Vallejos", "Jennifer No se cuanto", "Benjamin Practicas"]
 }
 
-# Configuración de Email
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
-EMAIL_REMITENTE = "enviodeinformestc1234@gmail.com"
-EMAIL_PASSWORD = "gedc vmtb rjph hyrn"
+# ==========================================
+# CONFIGURACIÓN DE EMAIL (MICROSOFT GRAPH - OFICIAL)
+# ==========================================
+# Debes obtener estos datos en portal.azure.com > App Registrations
+# Permiso requerido en Azure: Mail.Send (Application)
+GRAPH_CLIENT_ID = "87031f88-8c50-4364-85e5-077be791f083"
+GRAPH_CLIENT_SECRET = "IFH8Q~3m-PbYWbiRKUqQKHmP5cSUsOH1sTTzobNZ"
+GRAPH_TENANT_ID = "00ed6bb9-1aca-4148-8f24-ee2de2078796"
+GRAPH_USER_EMAIL = "soporte@tecnocomp.cl"
 
-# Paleta de Colores
+# ==========================================
+# ESTILOS Y COLORES
+# ==========================================
 COLOR_PRIMARIO = "#0583F2"
 COLOR_SECUNDARIO = "#2685BF"
 COLOR_ACCENTO = "#2BB9D9"

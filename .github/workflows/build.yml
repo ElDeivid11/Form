@@ -44,8 +44,8 @@ jobs:
 
       - name: Build APK
         run: |
-          # CORREGIDO: Quitamos --include-packages que daba error
-          flet build apk --verbose
+          # AGREGADO: Permisos para Cámara y Almacenamiento (Lectura/Escritura)
+          flet build apk --verbose --permissions android.permission.CAMERA,android.permission.READ_EXTERNAL_STORAGE,android.permission.WRITE_EXTERNAL_STORAGE
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

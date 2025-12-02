@@ -14,11 +14,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Cleanup Workspace
+      # LIMPIEZA CRÍTICA: Borra archivos que rompen la compilación en Android
+      - name: Cleanup Repository Junk
         run: |
-          rm -rf build
-          rm -rf .git/refs/heads/main  # A veces da problemas
-          ls -R # Muestra los archivos para que veas en el log si logo2.png está ahí
+          rm -rf Informes
+          rm -f visitas.db
+          rm -rf .git
+          rm -rf __pycache__
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -31,7 +33,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Flet & Dependencies
+      - name: Install Dependencies
         run: |
           pip install -r requirements.txt
           pip install flet
@@ -42,7 +44,8 @@ jobs:
 
       - name: Build APK
         run: |
-          flet build apk --verbose --include-packages flet
+          # CORREGIDO: Quitamos --include-packages que daba error
+          flet build apk --verbose
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

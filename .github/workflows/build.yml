@@ -44,8 +44,9 @@ jobs:
 
       - name: Build APK
         run: |
-          # AGREGADO: Permisos para Cámara y Almacenamiento (Lectura/Escritura)
-          flet build apk --verbose --permissions android.permission.CAMERA,android.permission.READ_EXTERNAL_STORAGE,android.permission.WRITE_EXTERNAL_STORAGE
+          # CORREGIDO: Usamos los alias oficiales 'camera' y 'photo_library'
+          # 'photo_library' gestiona internamente los permisos de almacenamiento necesarios
+          flet build apk --verbose --permissions camera photo_library
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

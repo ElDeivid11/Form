@@ -8,6 +8,10 @@ FONT_FAMILY = "Poppins"
 NOMBRE_EMPRESA_ONEDRIVE = "Tecnocomp Computacion Ltda"
 CARPETA_LOCAL_INFORMES = "Informes"
 
+# CONTRASEÑA DE ADMINISTRADOR (Para Backups)
+ADMIN_PASSWORD = "admin123"  # <--- CAMBIA ESTO POR TU CONTRASEÑA REAL
+SHAREPOINT_BACKUP_FOLDER = "Backups_DB" # Nombre de la carpeta en SharePoint
+
 # Tareas de Mantenimiento (Actualizadas según procedimiento oficial)
 TAREAS_MANTENIMIENTO = [
     "Solicitar cierre de documentos y credenciales",

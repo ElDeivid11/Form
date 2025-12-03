@@ -176,7 +176,6 @@ def enviar_correo_graph(ruta_pdf, cliente, tecnico):
                     El documento PDF adjunto contiene el detalle completo.
                 </p>
                 
-                <!-- Botón visual decorativo, el archivo está adjunto -->
                 <div style="text-align:center; margin-top:20px;">
                     <span style="background-color: {color_brand}; color: white; padding: 10px 20px; border-radius: 20px; font-size: 14px; font-weight: bold;">
                         📎 Revisar PDF Adjunto
@@ -234,3 +233,61 @@ def guardar_firma_img(trazos, nombre_archivo="firma_temp.png"):
         if len(t) > 1: draw.line(t, fill="black", width=3)
         elif len(t) == 1: draw.point(t[0], fill="black")
     img.save(path); return path
+
+def subir_backup_database():
+    """
+    Sube el archivo 'visitas.db' a la carpeta de backups en SharePoint.
+    Retorna (True/False, Mensaje).
+    """
+    db_filename = "visitas.db"
+    if not os.path.exists(db_filename):
+        return False, "No se encuentra el archivo de base de datos local."
+
+    token = _obtener_token_graph()
+    if not token:
+        return False, "No se pudo autenticar con Graph"
+
+    headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+    
+    # Generar nombre con fecha para no sobrescribir
+    timestamp = obtener_hora_chile().strftime('%Y%m%d_%H%M%S')
+    remote_filename = f"Backup_visitas_{timestamp}.db"
+
+    try:
+        # 1. Obtener ID del Sitio (Reutilizamos lógica)
+        site_url = f"https://graph.microsoft.com/v1.0/sites/{config.SHAREPOINT_HOST_NAME}:{config.SHAREPOINT_SITE_PATH}"
+        r_site = requests.get(site_url, headers=headers)
+        if r_site.status_code != 200:
+            return False, "Error conectando al sitio SharePoint"
+        
+        site_id = r_site.json()['id']
+
+        # 2. Obtener ID del Drive
+        drives_url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/drives"
+        r_drives = requests.get(drives_url, headers=headers)
+        drive_id = None
+        for d in r_drives.json().get('value', []):
+            if d['name'] == config.SHAREPOINT_DRIVE_NAME or d['name'] in ["Documents", "Documentos"]:
+                drive_id = d['id']
+                break
+        
+        if not drive_id: return False, "No se encontró Drive"
+
+        # 3. Subir archivo a carpeta de Backups
+        # Estructura: /Backups_DB/Backup_visitas_FECHA.db
+        ruta_sharepoint = f"/{config.SHAREPOINT_BACKUP_FOLDER}/{remote_filename}"
+        upload_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:{ruta_sharepoint}:/content"
+
+        with open(db_filename, 'rb') as f_upload:
+            headers_put = headers.copy()
+            # application/x-sqlite3 es lo correcto, pero application/octet-stream es más genérico
+            headers_put['Content-Type'] = 'application/octet-stream' 
+            r_up = requests.put(upload_url, headers=headers_put, data=f_upload)
+
+        if r_up.status_code in [200, 201]:
+            return True, f"Backup exitoso: {remote_filename}"
+        else:
+            return False, f"Error subida: {r_up.status_code} - {r_up.text}"
+
+    except Exception as e:
+        return False, f"Excepción Backup: {e}"

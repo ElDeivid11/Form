@@ -81,6 +81,46 @@ def main(page: f.Page):
     def crear_seccion(c, titulo, contenido):
         return f.Container(content=f.Column([f.Text(titulo, weight="bold", size=16, color=config.COLOR_PRIMARIO), f.Divider(height=15, color="transparent"), contenido]), padding=20, bgcolor=c["card_bg"], border_radius=18, shadow=f.BoxShadow(blur_radius=15, color=c["sombra"], offset=f.Offset(0, 5)), margin=f.margin.only(bottom=20))
 
+    # --- Lógica del diálogo de Password ---
+    def mostrar_dialogo_backup(e):
+        pass_input = f.TextField(label="Contraseña de Administrador", password=True, can_reveal_password=True, text_align="center")
+        
+        def confirmar_backup(e):
+            if pass_input.value == config.ADMIN_PASSWORD:
+                page.close(dlg_pass)
+                pass_input.value = "" # Limpiar campo
+                
+                # Feedback visual de carga
+                page.open(f.SnackBar(f.Text("Iniciando respaldo en la nube..."), bgcolor="blue"))
+                page.update()
+                
+                # Ejecutar backup
+                ok, msg = utils.subir_backup_database()
+                
+                color = "green" if ok else "red"
+                page.open(f.SnackBar(f.Text(msg), bgcolor=color))
+            else:
+                pass_input.error_text = "Contraseña incorrecta"
+                pass_input.update()
+
+        dlg_pass = f.AlertDialog(
+            title=f.Text("Acceso Restringido"),
+            content=f.Container(
+                content=f.Column([
+                    f.Icon(f.Icons.SECURITY, size=50, color=config.COLOR_SECUNDARIO),
+                    f.Text("Esta acción subirá una copia completa de la base de datos al SharePoint."),
+                    pass_input
+                ], tight=True, horizontal_alignment="center"),
+                height=150
+            ),
+            actions=[
+                f.TextButton("Cancelar", on_click=lambda e: page.close(dlg_pass)),
+                f.ElevatedButton("Autorizar Backup", on_click=confirmar_backup, bgcolor=config.COLOR_PRIMARIO, color="white")
+            ],
+            actions_alignment="center"
+        )
+        page.open(dlg_pass)
+
     def route_change(route):
         page.views.clear()
         c = config.COLORES[app_state["tema"]]
@@ -94,7 +134,12 @@ def main(page: f.Page):
                 f.Divider(height=15, color="transparent"), 
                 crear_boton_menu(c, "Historial", "Ver reportes anteriores", f.Icons.HISTORY, lambda _: page.go("/historial"), grad_colors=["#F2994A", "#F2C94C"]),
                 f.Divider(height=15, color="transparent"),
-                crear_boton_menu(c, "Métricas", "Estadísticas y gráficos", f.Icons.BAR_CHART, lambda _: page.go("/metricas"), grad_colors=["#9C27B0", "#E040FB"])
+                crear_boton_menu(c, "Métricas", "Estadísticas y gráficos", f.Icons.BAR_CHART, lambda _: page.go("/metricas"), grad_colors=["#9C27B0", "#E040FB"]),
+                
+                # --- NUEVO BOTÓN BACKUP ---
+                f.Divider(height=15, color="transparent"),
+                crear_boton_menu(c, "Respaldo Cloud", "Subir DB a SharePoint", f.Icons.CLOUD_UPLOAD, mostrar_dialogo_backup, grad_colors=["#455A64", "#607D8B"])
+                
             ], horizontal_alignment="center", scroll="auto"), padding=f.padding.symmetric(horizontal=25, vertical=10), expand=True, alignment=f.alignment.top_center)
         ], bgcolor=c["fondo"], padding=0))
 

@@ -123,13 +123,7 @@ def main(page: f.Page):
             
             fp = f.FilePicker(on_result=lambda e: actualizar_fotos_usuario(e))
             page.overlay.append(fp)
-            save_file_picker = f.FilePicker(on_result=lambda e: notif_guardado(e))
-            page.overlay.append(save_file_picker)
-
-            def notif_guardado(e):
-                if e.path:
-                    try: shutil.copy2(ultimo_pdf_generado.value, e.path); page.open(f.SnackBar(f.Text(f"PDF Guardado"), bgcolor="green"))
-                    except Exception as ex: page.open(f.SnackBar(f.Text(f"Error: {ex}"), bgcolor="red"))
+            # ELIMINADO: save_file_picker (ya no se usa)
 
             def actualizar_fotos_usuario(e):
                 if e.files and usuario_actual_foto[0] is not None:
@@ -255,7 +249,7 @@ def main(page: f.Page):
                 dlg_firma = f.AlertDialog(title=f.Text("Firma Global (Opcional)"), content=f.Container(content=f.Stack([canvas, gd]), border=f.border.all(1, "grey"), border_radius=10, width=300, height=200, bgcolor="white"), actions=[f.TextButton("Limpiar", on_click=lambda e: [datos_firma["trazos"].clear(), canvas.shapes.clear(), canvas.update()]), f.ElevatedButton("Finalizar", on_click=confirmar_click, bgcolor=config.COLOR_PRIMARIO, color="white")])
                 page.open(dlg_firma)
 
-            btn_ver = f.ElevatedButton("Guardar PDF", icon=f.Icons.DOWNLOAD, visible=False, bgcolor=config.COLOR_ACCENTO, color="white")
+            # ELIMINADO: btn_ver (Guardar PDF)
             btn_correo = f.ElevatedButton("Enviar Correo", icon=f.Icons.EMAIL, visible=False, bgcolor=config.COLOR_SECUNDARIO, color="white")
             
             # --- FEEDBACK VISUAL ---
@@ -292,14 +286,18 @@ def main(page: f.Page):
                         email_destino = database.obtener_correo_cliente(dd_cli.value)
                         config.CORREOS_POR_CLIENTE[dd_cli.value] = email_destino # Hack compatibilidad
                         
-                        # --- CAMBIO A GRAPH ---
                         envio_ok, msg_graph = utils.enviar_correo_graph(pdf_path, dd_cli.value, dd_tec.value)
+                        
+                        # --- COMENTADO PORQUE NO ESTÁ APROBADO AÚN ---
+                        # sharepoint_ok, msg_sharepoint = utils.subir_archivo_sharepoint(pdf_path, dd_cli.value)
+                        msg_sharepoint = "" 
+
                         if envio_ok:
                             estado_envio = 1
-                            msg_envio = "Guardado y Enviado (Oficial)."
+                            msg_envio = f"Email Enviado. {msg_sharepoint}"
                             color_snack = "green"
                         else:
-                            msg_envio = f"Guardado. Error envío: {msg_graph}"
+                            msg_envio = f"Email Falló: {msg_graph}. {msg_sharepoint}"
                     except Exception as e_mail:
                         print(f"Error Graph: {e_mail}")
                     
@@ -308,8 +306,7 @@ def main(page: f.Page):
                     
                     page.open(f.SnackBar(f.Text(msg_envio), bgcolor=color_snack))
                     
-                    # Botones post-guardado
-                    btn_ver.visible = True; btn_ver.on_click = lambda e: save_file_picker.save_file(file_name=os.path.basename(pdf_path)); btn_ver.update()
+                    # Botones post-guardado (ELIMINADO BOTON DE DESCARGAR PDF)
                     btn_correo.visible = True; btn_correo.on_click = lambda _: [page.open(f.SnackBar(f.Text(msg_envio), bgcolor="blue"))]; btn_correo.update()
                     
                     # Limpiar
@@ -327,12 +324,13 @@ def main(page: f.Page):
 
             btn_main_guardar = f.ElevatedButton("FINALIZAR VISITA", on_click=lambda e: abrir_dialogo_firma(e), height=60, style=f.ButtonStyle(bgcolor=config.COLOR_PRIMARIO, color="white", shape=f.RoundedRectangleBorder(radius=15)))
             
+            # ELIMINADO: btn_ver en la fila de botones
             page.views.append(f.View("/nueva_visita", controls=[
                 f.AppBar(title=f.Text("Nueva Visita", color=c["texto"]), bgcolor=c["superficie"], color=config.COLOR_PRIMARIO, elevation=0),
                 f.Container(content=f.Column([
                     crear_seccion(c, "Información", f.Column([f.Row([dd_cli, btn_add_cli]), f.Row([dd_tec, btn_add_tec])], spacing=15)),
                     crear_seccion(c, "Bitácora", col_usuarios),
-                    crear_seccion(c, "Cierre", f.Column([txt_obs, btn_main_guardar, f.Row([btn_ver, btn_correo], alignment="center", wrap=True)], spacing=10))
+                    crear_seccion(c, "Cierre", f.Column([txt_obs, btn_main_guardar, f.Row([btn_correo], alignment="center", wrap=True)], spacing=10))
                 ], scroll="auto"), padding=20, expand=True)
             ], bgcolor=c["fondo"]))
 
@@ -359,6 +357,10 @@ def main(page: f.Page):
                         
                         # --- CAMBIO A GRAPH ---
                         ok, msg = utils.enviar_correo_graph(p_pdf, p_cli, p_tec)
+                        
+                        # Comentado SharePoint
+                        # utils.subir_archivo_sharepoint(p_pdf, p_cli)
+
                         if ok:
                             database.actualizar_estado_email(p_id, 1)
                             enviados += 1
@@ -393,11 +395,11 @@ def main(page: f.Page):
                                     firma_ui = f.Image(src=u['firma'], width=150) if u.get('firma') else f.Container()
                                     usuarios_ui.append(f.Container(content=f.Column([f.Text(f"{st} {u['nombre']}", weight="bold", color=c["texto"]), f.Text(desc, size=12, color=c["texto_sec"]), fotos_ui, f.Text("Firma:", size=10) if u.get('firma') else f.Container(), firma_ui, f.Divider()]), padding=10, border=f.border.all(1, "grey300"), border_radius=8, bgcolor=c["input_bg"]))
                             except: pass
-                        # CAMBIO A GRAPH TAMBIÉN EN REENVÍO
                         dlg = f.AlertDialog(content=f.Container(content=f.Column([header_modal, f.Text(f"Tec: {_te}", color=c["texto"], weight="bold"), f.Divider(), f.Column(usuarios_ui, scroll="auto", expand=True), f.Text(f"Nota: {_ob}", italic=True, color=c["texto_sec"])], scroll="auto"), width=600, height=700), actions=[f.TextButton("Cerrar", on_click=lambda e: page.close(dlg)), f.TextButton("Reenviar", icon=f.Icons.SEND, on_click=lambda e: [page.open(f.SnackBar(f.Text(utils.enviar_correo_graph(_pd, _cl, _te)[1]), bgcolor="blue")), database.actualizar_estado_email(_id, 1), page.go("/dummy"), page.go("/historial")])], inset_padding=10)
                         page.open(dlg)
                     
-                    lista_items.append(f.Container(content=f.Column([f.Row([f.Row([f.Container(content=f.Icon(f.Icons.DESCRIPTION, color=config.COLOR_BLANCO), bgcolor=config.COLOR_PRIMARIO if ex else "grey", padding=10, border_radius=12), f.Column([f.Text(cli, weight="bold", color=c["texto"]), f.Text(fecha, size=12, color=c["texto_sec"])], spacing=0)]), icon_env], alignment="spaceBetween"), f.Divider(color=c["borde"]), f.Row([f.Text(f"Tec: {tec}", color=c["texto"]), f.IconButton(icon=f.Icons.VISIBILITY, icon_color=config.COLOR_PRIMARIO, on_click=ver_detalle_modal), f.TextButton("Descargar PDF", on_click=lambda e, p=pdf_p: save_file_picker.save_file(file_name=os.path.basename(p)), disabled=not ex)], alignment="end")]), padding=15, bgcolor=c["card_bg"], border_radius=12, shadow=f.BoxShadow(blur_radius=5, color=c["sombra"]), margin=f.margin.only(bottom=10)))
+                    # ELIMINADO: TextButton "Descargar PDF" de la tarjeta de historial
+                    lista_items.append(f.Container(content=f.Column([f.Row([f.Row([f.Container(content=f.Icon(f.Icons.DESCRIPTION, color=config.COLOR_BLANCO), bgcolor=config.COLOR_PRIMARIO if ex else "grey", padding=10, border_radius=12), f.Column([f.Text(cli, weight="bold", color=c["texto"]), f.Text(fecha, size=12, color=c["texto_sec"])], spacing=0)]), icon_env], alignment="spaceBetween"), f.Divider(color=c["borde"]), f.Row([f.Text(f"Tec: {tec}", color=c["texto"]), f.IconButton(icon=f.Icons.VISIBILITY, icon_color=config.COLOR_PRIMARIO, on_click=ver_detalle_modal)], alignment="end")]), padding=15, bgcolor=c["card_bg"], border_radius=12, shadow=f.BoxShadow(blur_radius=5, color=c["sombra"]), margin=f.margin.only(bottom=10)))
             
             page.views.append(f.View("/historial", controls=[
                 f.AppBar(title=f.Text("Historial", color=c["texto"]), bgcolor=c["superficie"], color=config.COLOR_PRIMARIO, elevation=0, actions=[btn_sync]),

@@ -6,7 +6,10 @@ import os
 
 FONT_FAMILY = "Poppins"
 NOMBRE_EMPRESA_ONEDRIVE = "Tecnocomp Computacion Ltda"
-CARPETA_LOCAL_INFORMES = "Informes"
+
+# --- CAMBIO CRÍTICO: Ruta segura para Android ---
+# Usamos expanduser("~") para apuntar al almacenamiento interno de la app
+CARPETA_LOCAL_INFORMES = os.path.join(os.path.expanduser("~"), "Informes")
 
 # Tareas de Mantenimiento (Actualizadas según procedimiento oficial)
 TAREAS_MANTENIMIENTO = [
@@ -74,5 +77,4 @@ COLORES = {
 
 COLORES_GRAFICOS = ["blue", "purple", "teal", "orange", "pink", "cyan", "indigo"]
 
-if not os.path.exists(CARPETA_LOCAL_INFORMES):
-    os.makedirs(CARPETA_LOCAL_INFORMES)
+# --- ELIMINADO: La creación de carpeta se movió a main.py para evitar errores al importar ---

@@ -18,6 +18,17 @@ def main(page: f.Page):
     page.fonts = {"Poppins": "https://fonts.gstatic.com/s/poppins/v20/pxiByp8kv8JHgFVrLEj6Z1xlFd2JQEk.woff2"}
     page.theme = f.Theme(font_family=config.FONT_FAMILY, use_material3=True)
     
+    # --- NUEVO: Creación segura de directorios al iniciar la app ---
+    try:
+        if not os.path.exists(config.CARPETA_LOCAL_INFORMES):
+            os.makedirs(config.CARPETA_LOCAL_INFORMES)
+            print(f"Carpeta creada correctamente en: {config.CARPETA_LOCAL_INFORMES}")
+    except Exception as e:
+        print(f"Error crítico al crear carpeta de informes: {e}")
+        # Opcional: Mostrar error en pantalla si es crítico
+        page.open(f.SnackBar(f.Text(f"Advertencia de sistema: {e}"), bgcolor="red"))
+    # -------------------------------------------------------------
+
     app_state = {
         "tema": "light",
         "id_reporte_editar": None 

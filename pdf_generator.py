@@ -1,4 +1,3 @@
-# pdf_generator.py
 import os
 import tempfile
 from fpdf import FPDF
@@ -8,17 +7,35 @@ import utils
 
 class PDFReporte(FPDF):
     def header(self):
-        # Fondo cabecera
-        self.set_fill_color(5, 131, 242) # Azul similar a COLOR_PRIMARIO
+        self.set_fill_color(5, 131, 242)
         self.rect(0, 0, 210, 42, 'F')
         
-        # Logo
-        logo = "logo.png" if os.path.exists("logo.png") else ("logo2.png" if os.path.exists("logo2.png") else None)
-        if logo:
-            try: self.image(logo, x=10, y=6, w=50) 
-            except: pass
+        # --- LÓGICA DE LOGO SIMPLIFICADA PARA ANDROID ---
+        # En Android, Flet empaqueta todo. Probamos rutas relativas directas.
+        candidatos = [
+            "assets/Tecnocomp.png", # Prioridad 1
+            "assets/logo.png",
+            "assets/logo2.png",
+            "Tecnocomp.png",        # Por si acaso quedó en raíz
+            "logo.png",
+            "logo2.png"
+        ]
+        
+        logo_a_usar = None
+        for ruta in candidatos:
+            if os.path.exists(ruta):
+                logo_a_usar = ruta
+                break
             
-        # Título
+        if logo_a_usar:
+            try: 
+                # Ajustamos el tamaño y posición del logo
+                self.image(logo_a_usar, x=10, y=6, w=50) 
+            except Exception as e: 
+                # En Android no veremos este print, pero evita que la app crashee
+                print(f"Error cargando logo {logo_a_usar}: {e}")
+        # ----------------------------------------
+            
         self.set_font('Helvetica', 'B', 16)
         self.set_text_color(255, 255, 255)
         self.set_xy(140, 15)
@@ -36,11 +53,9 @@ def generar_pdf(cliente, tecnico, obs, path_firma, datos_usuarios):
     pdf.alias_nb_pages()
     pdf.add_page()
     
-    # Datos generales
     pdf.set_fill_color(240, 240, 240)
     pdf.rect(10, 48, 190, 28, 'F')
     
-    # Helper para filas de datos
     def add_data_row(label, value):
         pdf.set_x(15)
         pdf.set_font("Helvetica", "B", 10)
@@ -88,7 +103,6 @@ def generar_pdf(cliente, tecnico, obs, path_firma, datos_usuarios):
         texto = f"Trabajo: {u['trabajo']}" if u['atendido'] else f"Motivo: {u['motivo']}"
         pdf.multi_cell(0, 5, texto, align='L')
         
-        # Fotos
         if u['fotos'] and u['atendido']:
             pdf.ln(2)
             pdf.set_font("Helvetica", "B", 9)
@@ -110,7 +124,6 @@ def generar_pdf(cliente, tecnico, obs, path_firma, datos_usuarios):
                     except: pass
             pdf.set_y(y_c + 40)
         
-        # Firma usuario
         firma_usr = u.get('firma')
         if firma_usr and os.path.exists(firma_usr):
             if pdf.get_y() + 30 > 270: pdf.add_page()
@@ -129,7 +142,6 @@ def generar_pdf(cliente, tecnico, obs, path_firma, datos_usuarios):
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(5)
 
-    # Observaciones y firma global
     if pdf.get_y() > 220: pdf.add_page()
     pdf.set_font("Helvetica", "B", 12)
     pdf.set_text_color(5, 131, 242)

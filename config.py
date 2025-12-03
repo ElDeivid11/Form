@@ -46,6 +46,9 @@ SHAREPOINT_HOST_NAME = "tecnocompcomputacion.sharepoint.com"
 SHAREPOINT_SITE_PATH = "/sites/Pruueba" 
 SHAREPOINT_DRIVE_NAME = "Documentos"
 
+# CONTRASEÑA PARA EXPORTAR BASE DE DATOS
+ADMIN_PASSWORD = "Limari2020$$" # <--- ¡CAMBIA ESTO POR UNA CLAVE SEGURA!
+
 # ==========================================
 # ESTILOS Y COLORES
 # ==========================================
@@ -71,6 +74,5 @@ COLORES = {
 
 COLORES_GRAFICOS = ["blue", "purple", "teal", "orange", "pink", "cyan", "indigo"]
 
-# Asegurar directorios
 if not os.path.exists(CARPETA_LOCAL_INFORMES):
     os.makedirs(CARPETA_LOCAL_INFORMES)

@@ -1,11 +1,15 @@
 import sqlite3
 import json
+import os
 import config
 
-DB_NAME = "visitas.db"
+# --- RUTA SEGURA PARA PERSISTENCIA ---
+# Usamos el directorio 'home' del usuario para asegurar que la DB no se borre al cerrar la app
+DB_FILE = "visitas.db"
+DB_PATH = os.path.join(os.path.expanduser("~"), DB_FILE)
 
 def conectar():
-    return sqlite3.connect(DB_NAME)
+    return sqlite3.connect(DB_PATH)
 
 def inicializar_db():
     con = conectar()
@@ -21,52 +25,22 @@ def inicializar_db():
             email_enviado INTEGER DEFAULT 0
         )
     """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS tecnicos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, 
-            nombre TEXT UNIQUE
-        )
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS clientes (
-            nombre TEXT PRIMARY KEY, 
-            email TEXT
-        )
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, 
-            nombre TEXT, 
-            cliente_nombre TEXT, 
-            FOREIGN KEY(cliente_nombre) REFERENCES clientes(nombre) ON DELETE CASCADE
-        )
-    """)
+    cur.execute("""CREATE TABLE IF NOT EXISTS tecnicos (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT UNIQUE)""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS clientes (nombre TEXT PRIMARY KEY, email TEXT)""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, cliente_nombre TEXT, FOREIGN KEY(cliente_nombre) REFERENCES clientes(nombre) ON DELETE CASCADE)""")
 
     # --- MIGRACIONES DE COLUMNAS ---
-    try:
-        cur.execute("ALTER TABLE reportes ADD COLUMN pdf_path TEXT")
-    except:
-        pass
-
-    try:
-        cur.execute("ALTER TABLE reportes ADD COLUMN detalles_usuarios TEXT")
-    except:
-        pass
-
-    try:
-        cur.execute("ALTER TABLE reportes ADD COLUMN email_enviado INTEGER DEFAULT 0")
-    except:
-        pass
-
-    try:
-        cur.execute("ALTER TABLE reportes ADD COLUMN latitud TEXT")
-    except:
-        pass
-
-    try:
-        cur.execute("ALTER TABLE reportes ADD COLUMN longitud TEXT")
-    except:
-        pass
+    for col_sql in [
+        "ALTER TABLE reportes ADD COLUMN pdf_path TEXT",
+        "ALTER TABLE reportes ADD COLUMN detalles_usuarios TEXT",
+        "ALTER TABLE reportes ADD COLUMN email_enviado INTEGER DEFAULT 0",
+        "ALTER TABLE reportes ADD COLUMN latitud TEXT",
+        "ALTER TABLE reportes ADD COLUMN longitud TEXT"
+    ]:
+        try:
+            cur.execute(col_sql)
+        except:
+            pass
 
     # --- DATOS POR DEFECTO ---
     cur.execute("SELECT COUNT(*) FROM tecnicos")
@@ -87,171 +61,79 @@ def inicializar_db():
     con.commit()
     con.close()
 
-# --- FUNCIONES TÉCNICOS ---
+# --- FUNCIONES DE LECTURA (GETTERS) ---
 
 def obtener_tecnicos():
-    con = conectar()
-    cur = con.cursor()
-    cur.execute("SELECT nombre FROM tecnicos ORDER BY nombre ASC")
-    lista = [row[0] for row in cur.fetchall()]
-    con.close()
-    return lista
-
-def agregar_nuevo_tecnico(nombre):
-    try: 
-        con = conectar()
-        cur = con.cursor()
-        cur.execute("INSERT INTO tecnicos (nombre) VALUES (?)", (nombre,))
-        con.commit()
-        con.close()
-        return True
-    except: 
-        return False
-
-def eliminar_tecnico(nombre):
-    try: 
-        con = conectar()
-        cur = con.cursor()
-        cur.execute("DELETE FROM tecnicos WHERE nombre = ?", (nombre,))
-        con.commit()
-        con.close()
-        return True
-    except: 
-        return False
-
-# --- FUNCIONES CLIENTES ---
-
-def obtener_clientes():
-    con = conectar()
-    cur = con.cursor()
-    cur.execute("SELECT nombre, email FROM clientes ORDER BY nombre ASC")
-    datos = cur.fetchall()
-    con.close()
-    return datos
+    con = conectar(); cur = con.cursor(); cur.execute("SELECT nombre FROM tecnicos ORDER BY nombre ASC"); lista = [row[0] for row in cur.fetchall()]; con.close(); return lista
 
 def obtener_nombres_clientes():
-    return [c[0] for c in obtener_clientes()]
+    con = conectar(); cur = con.cursor(); cur.execute("SELECT nombre FROM clientes ORDER BY nombre ASC"); lista = [row[0] for row in cur.fetchall()]; con.close(); return lista
 
-def agregar_cliente(nombre, email):
-    if not nombre: return False
-    try: 
-        con = conectar()
-        cur = con.cursor()
-        cur.execute("INSERT INTO clientes (nombre, email) VALUES (?, ?)", (nombre, email))
-        con.commit()
-        con.close()
-        return True
-    except: 
-        return False
-
-def eliminar_cliente(nombre):
-    try:
-        con = conectar()
-        cur = con.cursor()
-        cur.execute("DELETE FROM usuarios WHERE cliente_nombre = ?", (nombre,))
-        cur.execute("DELETE FROM clientes WHERE nombre = ?", (nombre,))
-        con.commit()
-        con.close()
-        return True
-    except: 
-        return False
-
-def obtener_correo_cliente(nombre_cliente):
-    con = conectar()
-    cur = con.cursor()
-    cur.execute("SELECT email FROM clientes WHERE nombre = ?", (nombre_cliente,))
-    res = cur.fetchone()
-    con.close()
-    return res[0] if res else ""
-
-# --- FUNCIONES USUARIOS ---
+def obtener_clientes():
+    con = conectar(); cur = con.cursor(); cur.execute("SELECT nombre, email FROM clientes ORDER BY nombre ASC"); datos = cur.fetchall(); con.close(); return datos
 
 def obtener_usuarios_por_cliente(cliente_nombre):
-    con = conectar()
-    cur = con.cursor()
-    cur.execute("SELECT nombre FROM usuarios WHERE cliente_nombre = ? ORDER BY nombre ASC", (cliente_nombre,))
-    lista = [row[0] for row in cur.fetchall()]
-    con.close()
-    return lista
+    con = conectar(); cur = con.cursor(); cur.execute("SELECT nombre FROM usuarios WHERE cliente_nombre = ? ORDER BY nombre ASC", (cliente_nombre,)); lista = [row[0] for row in cur.fetchall()]; con.close(); return lista
 
-def agregar_usuario(nombre, cliente_nombre):
-    try: 
-        con = conectar()
-        cur = con.cursor()
-        cur.execute("INSERT INTO usuarios (nombre, cliente_nombre) VALUES (?, ?)", (nombre, cliente_nombre))
-        con.commit()
-        con.close()
-        return True
-    except: 
-        return False
-
-def eliminar_usuario(nombre, cliente_nombre):
-    try: 
-        con = conectar()
-        cur = con.cursor()
-        cur.execute("DELETE FROM usuarios WHERE nombre = ? AND cliente_nombre = ?", (nombre, cliente_nombre))
-        con.commit()
-        con.close()
-        return True
-    except: 
-        return False
-
-# --- FUNCIONES REPORTES ---
-
-def obtener_conteo_reportes():
-    con = conectar()
-    cur = con.cursor()
-    cur.execute("SELECT COUNT(*) FROM reportes")
-    total = cur.fetchone()[0]
-    con.close()
-    return total
+def obtener_correo_cliente(nombre_cliente):
+    con = conectar(); cur = con.cursor(); cur.execute("SELECT email FROM clientes WHERE nombre = ?", (nombre_cliente,)); res = cur.fetchone(); con.close(); return res[0] if res else ""
 
 def obtener_historial():
-    con = conectar()
-    cur = con.cursor()
-    cur.execute("SELECT id, fecha, cliente, tecnico, observaciones, pdf_path, email_enviado, detalles_usuarios, imagen_path FROM reportes ORDER BY id DESC")
-    datos = cur.fetchall()
-    con.close()
-    return datos
+    con = conectar(); cur = con.cursor(); cur.execute("SELECT id, fecha, cliente, tecnico, observaciones, pdf_path, email_enviado, detalles_usuarios, imagen_path FROM reportes ORDER BY id DESC"); datos = cur.fetchall(); con.close(); return datos
+
+def obtener_conteo_reportes():
+    con = conectar(); cur = con.cursor(); cur.execute("SELECT COUNT(*) FROM reportes"); total = cur.fetchone()[0]; con.close(); return total
 
 def obtener_datos_clientes():
-    con = conectar()
-    cur = con.cursor()
-    cur.execute("SELECT cliente, COUNT(*) FROM reportes GROUP BY cliente ORDER BY COUNT(*) DESC")
-    datos = cur.fetchall()
-    con.close()
-    return datos
+    con = conectar(); cur = con.cursor(); cur.execute("SELECT cliente, COUNT(*) FROM reportes GROUP BY cliente ORDER BY COUNT(*) DESC"); datos = cur.fetchall(); con.close(); return datos
 
 def obtener_datos_tecnicos():
-    con = conectar()
-    cur = con.cursor()
-    cur.execute("SELECT tecnico, COUNT(*) FROM reportes GROUP BY tecnico ORDER BY COUNT(*) DESC")
-    datos = cur.fetchall()
-    con.close()
-    return datos
-
-def actualizar_estado_email(id_reporte, estado):
-    con = conectar()
-    cur = con.cursor()
-    cur.execute("UPDATE reportes SET email_enviado = ? WHERE id = ?", (estado, id_reporte))
-    con.commit()
-    con.close()
-
-def guardar_reporte(fecha, cliente, tecnico, obs, fotos_json, pdf_path, detalles_json, estado_envio, lat="", lon=""):
-    con = conectar()
-    cur = con.cursor()
-    cur.execute("""
-        INSERT INTO reportes (fecha, cliente, tecnico, observaciones, imagen_path, pdf_path, detalles_usuarios, email_enviado, latitud, longitud) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (fecha, cliente, tecnico, obs, fotos_json, pdf_path, detalles_json, estado_envio, lat, lon))
-    con.commit()
-    con.close()
+    con = conectar(); cur = con.cursor(); cur.execute("SELECT tecnico, COUNT(*) FROM reportes GROUP BY tecnico ORDER BY COUNT(*) DESC"); datos = cur.fetchall(); con.close(); return datos
 
 def obtener_reportes_pendientes():
-    """Retorna los reportes que no se han enviado por correo (email_enviado = 0)"""
-    con = conectar()
-    cur = con.cursor()
-    cur.execute("SELECT id, pdf_path, cliente, tecnico FROM reportes WHERE email_enviado = 0")
-    datos = cur.fetchall()
-    con.close()
-    return datos
+    con = conectar(); cur = con.cursor(); cur.execute("SELECT id, pdf_path, cliente, tecnico FROM reportes WHERE email_enviado = 0"); datos = cur.fetchall(); con.close(); return datos
+
+# --- FUNCIONES DE ESCRITURA (SETTERS) ---
+
+def agregar_nuevo_tecnico(nombre):
+    try: con = conectar(); cur = con.cursor(); cur.execute("INSERT INTO tecnicos (nombre) VALUES (?)", (nombre,)); con.commit(); con.close(); return True
+    except: return False
+
+def eliminar_tecnico(nombre):
+    try: con = conectar(); cur = con.cursor(); cur.execute("DELETE FROM tecnicos WHERE nombre = ?", (nombre,)); con.commit(); con.close(); return True
+    except: return False
+
+def agregar_cliente(nombre, email):
+    try: con = conectar(); cur = con.cursor(); cur.execute("INSERT INTO clientes (nombre, email) VALUES (?, ?)", (nombre, email)); con.commit(); con.close(); return True
+    except: return False
+
+def eliminar_cliente(nombre):
+    try: con = conectar(); cur = con.cursor(); cur.execute("DELETE FROM usuarios WHERE cliente_nombre = ?", (nombre,)); cur.execute("DELETE FROM clientes WHERE nombre = ?", (nombre,)); con.commit(); con.close(); return True
+    except: return False
+
+def agregar_usuario(nombre, cliente_nombre):
+    try: con = conectar(); cur = con.cursor(); cur.execute("INSERT INTO usuarios (nombre, cliente_nombre) VALUES (?, ?)", (nombre, cliente_nombre)); con.commit(); con.close(); return True
+    except: return False
+
+def eliminar_usuario(nombre, cliente_nombre):
+    try: con = conectar(); cur = con.cursor(); cur.execute("DELETE FROM usuarios WHERE nombre = ? AND cliente_nombre = ?", (nombre, cliente_nombre)); con.commit(); con.close(); return True
+    except: return False
+
+def actualizar_estado_email(id_reporte, estado):
+    con = conectar(); cur = con.cursor(); cur.execute("UPDATE reportes SET email_enviado = ? WHERE id = ?", (estado, id_reporte)); con.commit(); con.close()
+
+def guardar_reporte(fecha, cliente, tecnico, obs, fotos_json, pdf_path, detalles_json, estado_envio, lat="", lon=""):
+    con = conectar(); cur = con.cursor()
+    cur.execute("""INSERT INTO reportes (fecha, cliente, tecnico, observaciones, imagen_path, pdf_path, detalles_usuarios, email_enviado, latitud, longitud) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", (fecha, cliente, tecnico, obs, fotos_json, pdf_path, detalles_json, estado_envio, lat, lon))
+    con.commit(); con.close()
+
+# --- FUNCIÓN CRÍTICA PARA LA EDICIÓN ---
+def actualizar_reporte_completo(id_reporte, fecha, cliente, tecnico, obs, fotos_json, pdf_path, detalles_json, estado_envio=0):
+    con = conectar(); cur = con.cursor()
+    cur.execute("""
+        UPDATE reportes SET 
+            fecha=?, cliente=?, tecnico=?, observaciones=?, 
+            imagen_path=?, pdf_path=?, detalles_usuarios=?, email_enviado=?
+        WHERE id=?
+    """, (fecha, cliente, tecnico, obs, fotos_json, pdf_path, detalles_json, estado_envio, id_reporte))
+    con.commit(); con.close()

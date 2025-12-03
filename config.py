@@ -6,10 +6,7 @@ import os
 
 FONT_FAMILY = "Poppins"
 NOMBRE_EMPRESA_ONEDRIVE = "Tecnocomp Computacion Ltda"
-
-# --- CAMBIO CRÍTICO: Ruta segura para Android ---
-# Usamos expanduser("~") para apuntar al almacenamiento interno de la app
-CARPETA_LOCAL_INFORMES = os.path.join(os.path.expanduser("~"), "Informes")
+CARPETA_LOCAL_INFORMES = "Informes"
 
 # Tareas de Mantenimiento (Actualizadas según procedimiento oficial)
 TAREAS_MANTENIMIENTO = [
@@ -49,9 +46,6 @@ SHAREPOINT_HOST_NAME = "tecnocompcomputacion.sharepoint.com"
 SHAREPOINT_SITE_PATH = "/sites/Pruueba" 
 SHAREPOINT_DRIVE_NAME = "Documentos"
 
-# CONTRASEÑA PARA EXPORTAR BASE DE DATOS
-ADMIN_PASSWORD = "Limari2020$$" # <--- ¡CAMBIA ESTO POR UNA CLAVE SEGURA!
-
 # ==========================================
 # ESTILOS Y COLORES
 # ==========================================
@@ -77,4 +71,6 @@ COLORES = {
 
 COLORES_GRAFICOS = ["blue", "purple", "teal", "orange", "pink", "cyan", "indigo"]
 
-# --- ELIMINADO: La creación de carpeta se movió a main.py para evitar errores al importar ---
+# Asegurar directorios
+if not os.path.exists(CARPETA_LOCAL_INFORMES):
+    os.makedirs(CARPETA_LOCAL_INFORMES)

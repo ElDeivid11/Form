@@ -126,6 +126,14 @@ def main(page: f.Page):
         page.views.clear()
         c = config.COLORES[app_state["tema"]]
         
+        # --- Helper para opacidad (Arregla el error 'f.with_opacity') ---
+        def obtener_color_opacidad(color_hex, opacity):
+            # Convierte #RRGGBB a #AARRGGBB
+            if not color_hex: return None
+            color_hex = color_hex.lstrip('#')
+            alpha = int(opacity * 255)
+            return f"#{alpha:02x}{color_hex}"
+
         # --- DASHBOARD ---
         if page.route == "/":
             app_state["id_editar"] = None
@@ -143,26 +151,114 @@ def main(page: f.Page):
                 ], horizontal_alignment="center", scroll="auto"), padding=f.padding.symmetric(horizontal=25, vertical=10), expand=True, alignment=f.alignment.top_center)
             ], bgcolor=c["fondo"], padding=0))
 
-        # --- METRICAS ---
+        # --- METRICAS PROFESIONALES ---
         if page.route == "/metricas":
+            # 1. Obtener Datos
             data_cli = database.obtener_datos_clientes()
             data_tec = database.obtener_datos_tecnicos()
-            pie_sections = [f.PieChartSection(value=val, title=f"{key}\n{val}", color=config.COLORES_GRAFICOS[i%len(config.COLORES_GRAFICOS)], radius=60) for i, (key, val) in enumerate(data_cli)]
-            chart_pie = f.PieChart(sections=pie_sections, sections_space=2, center_space_radius=40, height=200) if pie_sections else f.Text("Sin datos", color=c["texto_sec"])
-            bar_groups = [f.BarChartGroup(x=i, bar_rods=[f.BarChartRod(from_y=0, to_y=val, width=30, color=config.COLOR_ACCENTO, tooltip=f"{key}: {val}", border_radius=5)]) for i, (key, val) in enumerate(data_tec)]
-            chart_bar = f.BarChart(bar_groups=bar_groups, border=f.border.all(0, "transparent"), left_axis=f.ChartAxis(labels_size=35), bottom_axis=f.ChartAxis(labels=[f.ChartAxisLabel(value=i, label=f.Text(key[:3], size=10)) for i, (key, val) in enumerate(data_tec)]), height=250) if bar_groups else f.Text("Sin datos", color=c["texto_sec"])
-            card_pie = f.Container(content=f.Column([f.Text("Visitas por Cliente", size=17, weight="bold", color=c["texto"]), f.Divider(color="transparent", height=15), chart_pie], horizontal_alignment="center"), bgcolor=c["card_bg"], padding=25, border_radius=20, shadow=f.BoxShadow(blur_radius=15, color=c["sombra"], offset=f.Offset(0, 5)))
-            card_bar = f.Container(content=f.Column([f.Text("Visitas por Técnico", size=17, weight="bold", color=c["texto"]), f.Divider(color="transparent", height=15), chart_bar], horizontal_alignment="center"), bgcolor=c["card_bg"], padding=25, border_radius=20, shadow=f.BoxShadow(blur_radius=15, color=c["sombra"], offset=f.Offset(0, 5)))
+            total, pendientes, top_cliente = database.obtener_kpis_generales()
+            data_mes = database.obtener_evolucion_mensual()
+
+            # 2. Helpers de UI
+            def crear_kpi_card(titulo, valor, icono, color_bg, color_ico):
+                return f.Container(
+                    content=f.Column([
+                        f.Row([f.Icon(icono, color=color_ico, size=20), f.Text(titulo, size=12, color=c["texto_sec"], weight="w500")], spacing=5),
+                        f.Text(str(valor), size=22, weight="bold", color=c["texto"])
+                    ], spacing=2),
+                    bgcolor=c["card_bg"], padding=15, border_radius=12, 
+                    shadow=f.BoxShadow(blur_radius=5, color=c["sombra"], offset=f.Offset(0, 3)),
+                    expand=True
+                )
+
+            # 3. Construcción de Gráficos
+            # -- KPIs --
+            row_kpis = f.Row([
+                crear_kpi_card("Total Visitas", total, f.Icons.NUMBERS, c["card_bg"], config.COLOR_PRIMARIO),
+                crear_kpi_card("Pendientes", pendientes, f.Icons.PENDING_ACTIONS, c["card_bg"], "orange"),
+                crear_kpi_card("Top Cliente", top_cliente.split('(')[0][:10], f.Icons.STAR, c["card_bg"], "purple"),
+            ], spacing=10)
+
+            # -- Línea de Evolución --
+            if data_mes:
+                puntos_linea = [f.LineChartDataPoint(i, count) for i, (mes, count) in enumerate(data_mes)]
+                etiquetas_x = [f.ChartAxisLabel(value=i, label=f.Text(mes[5:], size=10, weight="bold")) for i, (mes, count) in enumerate(data_mes)]
+                max_y = max([x[1] for x in data_mes]) + 2
+                
+                # COLOR CORREGIDO AQUÍ
+                color_sombreado = obtener_color_opacidad(config.COLOR_ACCENTO, 0.2)
+                
+                chart_line = f.LineChart(
+                    data_series=[f.LineChartData(
+                        data_points=puntos_linea, 
+                        stroke_width=4, 
+                        color=config.COLOR_ACCENTO, 
+                        curved=True,
+                        stroke_cap_round=True, 
+                        below_line_bgcolor=color_sombreado
+                    )],
+                    border=f.border.all(0),
+                    left_axis=f.ChartAxis(labels_size=30),
+                    bottom_axis=f.ChartAxis(labels=etiquetas_x, labels_size=20),
+                    tooltip_bgcolor=c["input_bg"],
+                    min_y=0, max_y=max_y, height=200
+                )
+            else:
+                chart_line = f.Text("Sin datos históricos", color="grey")
+
+            container_linea = f.Container(
+                content=f.Column([
+                    f.Text("Tendencia Mensual", size=16, weight="bold", color=c["texto"]),
+                    f.Divider(height=10, color="transparent"),
+                    chart_line
+                ]),
+                bgcolor=c["card_bg"], padding=20, border_radius=16, shadow=f.BoxShadow(blur_radius=10, color=c["sombra"])
+            )
+
+            # -- Clientes (Pie) --
+            pie_sections = [f.PieChartSection(value=val, title=f"{val}", color=config.COLORES_GRAFICOS[i%len(config.COLORES_GRAFICOS)], radius=50, title_style=f.TextStyle(size=12, color="white", weight="bold")) for i, (key, val) in enumerate(data_cli)]
+            chart_pie = f.PieChart(sections=pie_sections, sections_space=2, center_space_radius=30, height=200) if pie_sections else f.Text("Sin datos")
+            
+            # Leyenda manual para Pie (más limpio)
+            legend_items = []
+            for i, (key, val) in enumerate(data_cli[:4]): # Solo top 4
+                legend_items.append(f.Row([
+                    f.Container(width=10, height=10, bgcolor=config.COLORES_GRAFICOS[i%len(config.COLORES_GRAFICOS)], border_radius=2),
+                    f.Text(key, size=10, color=c["texto_sec"], no_wrap=True)
+                ], spacing=5))
+            
+            col_pie = f.Column([f.Text("Por Cliente", weight="bold", color=c["texto"]), chart_pie, f.Column(legend_items, spacing=2)], horizontal_alignment="center", spacing=10)
+            container_pie = f.Container(content=col_pie, bgcolor=c["card_bg"], padding=15, border_radius=16, shadow=f.BoxShadow(blur_radius=10, color=c["sombra"]), expand=True)
+
+            # -- Técnicos (Bar) --
+            bar_groups = [f.BarChartGroup(x=i, bar_rods=[f.BarChartRod(from_y=0, to_y=val, width=20, color=config.COLOR_PRIMARIO, border_radius=4)]) for i, (key, val) in enumerate(data_tec)]
+            chart_bar = f.BarChart(
+                bar_groups=bar_groups, border=f.border.all(0),
+                left_axis=f.ChartAxis(labels_size=25),
+                bottom_axis=f.ChartAxis(labels=[f.ChartAxisLabel(value=i, label=f.Text(key[:3], size=10)) for i, (key, val) in enumerate(data_tec)]),
+                height=180
+            ) if bar_groups else f.Text("Sin datos")
+            
+            col_bar = f.Column([f.Text("Por Técnico", weight="bold", color=c["texto"]), chart_bar], horizontal_alignment="center", spacing=20)
+            container_bar = f.Container(content=col_bar, bgcolor=c["card_bg"], padding=15, border_radius=16, shadow=f.BoxShadow(blur_radius=10, color=c["sombra"]), expand=True)
+
+            # 4. Ensamblaje de Vista
             page.views.append(f.View("/metricas", controls=[
                 f.AppBar(
                     leading=f.IconButton(icon=f.Icons.ARROW_BACK, icon_color=config.COLOR_PRIMARIO, on_click=lambda _: page.go("/")),
-                    title=f.Text("Métricas", color=c["texto"], weight="bold"), 
+                    title=f.Text("Dashboard", color=c["texto"], weight="bold"), 
                     bgcolor=c["superficie"], 
                     color=config.COLOR_PRIMARIO, 
                     elevation=0, 
                     center_title=True
                 ), 
-                f.Container(content=f.Column([card_pie, f.Divider(height=20, color="transparent"), card_bar], scroll="auto"), padding=25, expand=True)
+                f.Container(content=f.Column([
+                    row_kpis,
+                    f.Divider(height=10, color="transparent"),
+                    container_linea,
+                    f.Divider(height=10, color="transparent"),
+                    f.Row([container_pie, container_bar], spacing=10)
+                ], scroll="auto"), padding=20, expand=True)
             ], bgcolor=c["fondo"]))
 
         # --- NUEVA VISITA / EDICIÓN ---
@@ -283,7 +379,6 @@ def main(page: f.Page):
 
                     usr_state = {"nombre": nombre, "check": chk, "motivo": txt_motivo, "trabajo": txt_trabajo, "lista_fotos": list(val_fotos), "control_galeria": row_galeria, "firma": val_firma}
                     
-                    # --- RESTAURACIÓN MEJORADA DE CHECKLIST ---
                     estado_tareas = {t: False for t in config.TAREAS_MANTENIMIENTO}
                     if val_trabajo.startswith("Mantenimiento: "):
                         tareas_texto = val_trabajo.replace("Mantenimiento: ", "")
@@ -313,20 +408,34 @@ def main(page: f.Page):
                     
                     btn_checklist = f.ElevatedButton("Checklist", icon=f.Icons.CHECKLIST, bgcolor=config.COLOR_SECUNDARIO, color="white", on_click=abrir_checklist)
                     
+                    icon_check_firma = f.Icon(f.Icons.CHECK_CIRCLE, color="green", visible=bool(val_firma), tooltip="Firma capturada")
+
                     canvas_ind = cv.Canvas(shapes=[]); gd_ind = f.GestureDetector(on_pan_start=lambda e: [datos_firma_individual["trazos"].append([(e.local_x, e.local_y)]), canvas_ind.shapes.append(cv.Path([cv.Path.MoveTo(e.local_x, e.local_y)], paint=f.Paint(stroke_width=3, color="black", style=f.PaintingStyle.STROKE))), canvas_ind.update()], on_pan_update=lambda e: [datos_firma_individual["trazos"][-1].append((e.local_x, e.local_y)), canvas_ind.shapes[-1].elements.append(cv.Path.LineTo(e.local_x, e.local_y)), canvas_ind.update()])
-                    def abrir_firma_ind(e, u_st=usr_state):
+                    
+                    def abrir_firma_ind(e, u_st=usr_state, icon_ref=icon_check_firma):
                         datos_firma_individual["trazos"] = []; canvas_ind.shapes = []
                         def guardar_f(e):
                             path = utils.guardar_firma_img(datos_firma_individual["trazos"], f"firma_{nombre}_{datetime.datetime.now().timestamp()}.png")
-                            u_st["firma"] = path; page.close(d_f); page.open(f.SnackBar(f.Text("Firma guardada"), bgcolor="green"))
+                            u_st["firma"] = path
+                            icon_ref.visible = True
+                            icon_ref.update()
+                            page.close(d_f); page.open(f.SnackBar(f.Text("Firma guardada"), bgcolor="green"))
                         d_f = f.AlertDialog(title=f.Text(f"Firma: {nombre}"), content=f.Container(content=f.Stack([canvas_ind, gd_ind]), border=f.border.all(1, "grey"), width=300, height=200, bgcolor="white"), actions=[f.TextButton("Borrar", on_click=lambda e: [datos_firma_individual["trazos"].clear(), canvas_ind.shapes.clear(), canvas_ind.update()]), f.ElevatedButton("Guardar", on_click=guardar_f, bgcolor=config.COLOR_PRIMARIO, color="white")]); page.open(d_f)
+                    
                     btn_firma_ind = f.ElevatedButton("Firmar", icon=f.Icons.DRAW, bgcolor=config.COLOR_ACCENTO, color="white", on_click=abrir_firma_ind)
                     
                     def pick_evidence(e, idx=i): usuario_actual_foto[0] = idx; fp.pick_files(allow_multiple=True, file_type=f.FilePickerFileType.ANY)
                     btn_galeria = f.IconButton(icon=f.Icons.ADD_PHOTO_ALTERNATE, icon_color=config.COLOR_ACCENTO, on_click=pick_evidence)
                     btn_camara = f.IconButton(icon=f.Icons.CAMERA_ALT, icon_color=config.COLOR_ACCENTO, on_click=pick_evidence)
                     
-                    cont_detalles = f.Column([f.Divider(color=c["borde"]), f.Row([btn_checklist, btn_firma_ind], alignment="spaceBetween"), f.Row([btn_galeria, btn_camara, row_galeria], alignment="start")], visible=val_atendido)
+                    cont_detalles = f.Column([
+                        f.Divider(color=c["borde"]), 
+                        f.Row([
+                            btn_checklist, 
+                            f.Row([btn_firma_ind, icon_check_firma], spacing=5)
+                        ], alignment="spaceBetween"), 
+                        f.Row([btn_galeria, btn_camara, row_galeria], alignment="start")
+                    ], visible=val_atendido)
                     
                     def on_chk(e, tm=txt_motivo, tt=txt_trabajo, cd=cont_detalles):
                         v = e.control.value; tm.visible = not v; tt.visible = v; cd.visible = v; page.update()

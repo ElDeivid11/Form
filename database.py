@@ -260,3 +260,42 @@ def obtener_reportes_pendientes():
     datos = cur.fetchall()
     con.close()
     return datos
+
+# --- NUEVAS FUNCIONES PARA MÉTRICAS AVANZADAS ---
+
+def obtener_kpis_generales():
+    """Retorna (Total Visitas, Pendientes Envío, Cliente Top)"""
+    con = conectar()
+    cur = con.cursor()
+    
+    # Total
+    cur.execute("SELECT COUNT(*) FROM reportes")
+    total = cur.fetchone()[0]
+    
+    # Pendientes
+    cur.execute("SELECT COUNT(*) FROM reportes WHERE email_enviado = 0")
+    pendientes = cur.fetchone()[0]
+    
+    # Cliente Top
+    cur.execute("SELECT cliente, COUNT(*) as c FROM reportes GROUP BY cliente ORDER BY c DESC LIMIT 1")
+    top_cli = cur.fetchone()
+    cliente_top = f"{top_cli[0]} ({top_cli[1]})" if top_cli else "N/A"
+    
+    con.close()
+    return total, pendientes, cliente_top
+
+def obtener_evolucion_mensual():
+    """Retorna lista [(Mes, Cantidad)] de los últimos 6 meses"""
+    con = conectar()
+    cur = con.cursor()
+    # SQLite usa substr para obtener 'YYYY-MM'
+    cur.execute("""
+        SELECT substr(fecha, 1, 7) as mes, COUNT(*) 
+        FROM reportes 
+        GROUP BY mes 
+        ORDER BY mes DESC 
+        LIMIT 6
+    """)
+    datos = cur.fetchall() # Viene del más reciente al más antiguo
+    con.close()
+    return datos[::-1] # Invertimos para que el gráfico vaya de izquierda a derecha

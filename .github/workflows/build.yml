@@ -44,9 +44,11 @@ jobs:
 
       - name: Build APK
         run: |
-          # CORREGIDO: Usamos los alias oficiales 'camera' y 'photo_library'
-          # 'photo_library' gestiona internamente los permisos de almacenamiento necesarios
-          flet build apk --verbose --permissions camera photo_library
+          # AGREGADO:
+          # --product "Tecnocomp": Pone el nombre visible debajo del ícono.
+          # --permissions: Habilita cámara y galería.
+          # Flet busca automáticamente la carpeta "assets" con "icon.png" dentro.
+          flet build apk --verbose --product "Tecnocomp" --permissions camera photo_library
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

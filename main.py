@@ -18,7 +18,12 @@ def main(page: f.Page):
     page.fonts = {"Poppins": "https://fonts.gstatic.com/s/poppins/v20/pxiByp8kv8JHgFVrLEj6Z1xlFd2JQEk.woff2"}
     page.theme = f.Theme(font_family=config.FONT_FAMILY, use_material3=True)
     
-    app_state = {"tema": "light"}
+    # --- ESTADO GLOBAL ---
+    app_state = {
+        "tema": "light",
+        "id_editar": None
+    }
+    
     page.theme_mode = f.ThemeMode.LIGHT
     page.bgcolor = config.COLORES["light"]["fondo"]
     ultimo_pdf_generado = f.Text("", visible=False)
@@ -81,22 +86,18 @@ def main(page: f.Page):
     def crear_seccion(c, titulo, contenido):
         return f.Container(content=f.Column([f.Text(titulo, weight="bold", size=16, color=config.COLOR_PRIMARIO), f.Divider(height=15, color="transparent"), contenido]), padding=20, bgcolor=c["card_bg"], border_radius=18, shadow=f.BoxShadow(blur_radius=15, color=c["sombra"], offset=f.Offset(0, 5)), margin=f.margin.only(bottom=20))
 
-    # --- Lógica del diálogo de Password ---
+    # --- BACKUP ---
     def mostrar_dialogo_backup(e):
         pass_input = f.TextField(label="Contraseña de Administrador", password=True, can_reveal_password=True, text_align="center")
         
         def confirmar_backup(e):
             if pass_input.value == config.ADMIN_PASSWORD:
                 page.close(dlg_pass)
-                pass_input.value = "" # Limpiar campo
-                
-                # Feedback visual de carga
+                pass_input.value = "" 
                 page.open(f.SnackBar(f.Text("Iniciando respaldo en la nube..."), bgcolor="blue"))
                 page.update()
                 
-                # Ejecutar backup
                 ok, msg = utils.subir_backup_database()
-                
                 color = "green" if ok else "red"
                 page.open(f.SnackBar(f.Text(msg), bgcolor=color))
             else:
@@ -126,22 +127,21 @@ def main(page: f.Page):
         c = config.COLORES[app_state["tema"]]
         
         # --- DASHBOARD ---
-        page.views.append(f.View("/", controls=[
-            crear_header(c), 
-            f.Container(content=f.Column([
-                crear_stats_card(c), 
-                crear_boton_menu(c, "Nueva Visita", "Crear reporte y firmar", f.Icons.ADD_LOCATION_ALT_ROUNDED, lambda _: page.go("/nueva_visita")),
-                f.Divider(height=15, color="transparent"), 
-                crear_boton_menu(c, "Historial", "Ver reportes anteriores", f.Icons.HISTORY, lambda _: page.go("/historial"), grad_colors=["#F2994A", "#F2C94C"]),
-                f.Divider(height=15, color="transparent"),
-                crear_boton_menu(c, "Métricas", "Estadísticas y gráficos", f.Icons.BAR_CHART, lambda _: page.go("/metricas"), grad_colors=["#9C27B0", "#E040FB"]),
-                
-                # --- NUEVO BOTÓN BACKUP ---
-                f.Divider(height=15, color="transparent"),
-                crear_boton_menu(c, "Respaldo Cloud", "Subir DB a SharePoint", f.Icons.CLOUD_UPLOAD, mostrar_dialogo_backup, grad_colors=["#455A64", "#607D8B"])
-                
-            ], horizontal_alignment="center", scroll="auto"), padding=f.padding.symmetric(horizontal=25, vertical=10), expand=True, alignment=f.alignment.top_center)
-        ], bgcolor=c["fondo"], padding=0))
+        if page.route == "/":
+            app_state["id_editar"] = None
+            page.views.append(f.View("/", controls=[
+                crear_header(c), 
+                f.Container(content=f.Column([
+                    crear_stats_card(c), 
+                    crear_boton_menu(c, "Nueva Visita", "Crear reporte y firmar", f.Icons.ADD_LOCATION_ALT_ROUNDED, lambda _: page.go("/nueva_visita")),
+                    f.Divider(height=15, color="transparent"), 
+                    crear_boton_menu(c, "Historial", "Ver y editar reportes", f.Icons.HISTORY, lambda _: page.go("/historial"), grad_colors=["#F2994A", "#F2C94C"]),
+                    f.Divider(height=15, color="transparent"),
+                    crear_boton_menu(c, "Métricas", "Estadísticas y gráficos", f.Icons.BAR_CHART, lambda _: page.go("/metricas"), grad_colors=["#9C27B0", "#E040FB"]),
+                    f.Divider(height=15, color="transparent"),
+                    crear_boton_menu(c, "Respaldo Cloud", "Subir DB a SharePoint", f.Icons.CLOUD_UPLOAD, mostrar_dialogo_backup, grad_colors=["#455A64", "#607D8B"])
+                ], horizontal_alignment="center", scroll="auto"), padding=f.padding.symmetric(horizontal=25, vertical=10), expand=True, alignment=f.alignment.top_center)
+            ], bgcolor=c["fondo"], padding=0))
 
         # --- METRICAS ---
         if page.route == "/metricas":
@@ -154,11 +154,18 @@ def main(page: f.Page):
             card_pie = f.Container(content=f.Column([f.Text("Visitas por Cliente", size=17, weight="bold", color=c["texto"]), f.Divider(color="transparent", height=15), chart_pie], horizontal_alignment="center"), bgcolor=c["card_bg"], padding=25, border_radius=20, shadow=f.BoxShadow(blur_radius=15, color=c["sombra"], offset=f.Offset(0, 5)))
             card_bar = f.Container(content=f.Column([f.Text("Visitas por Técnico", size=17, weight="bold", color=c["texto"]), f.Divider(color="transparent", height=15), chart_bar], horizontal_alignment="center"), bgcolor=c["card_bg"], padding=25, border_radius=20, shadow=f.BoxShadow(blur_radius=15, color=c["sombra"], offset=f.Offset(0, 5)))
             page.views.append(f.View("/metricas", controls=[
-                f.AppBar(title=f.Text("Métricas", color=c["texto"], weight="bold"), bgcolor=c["superficie"], color=config.COLOR_PRIMARIO, elevation=0, center_title=True), 
+                f.AppBar(
+                    leading=f.IconButton(icon=f.Icons.ARROW_BACK, icon_color=config.COLOR_PRIMARIO, on_click=lambda _: page.go("/")),
+                    title=f.Text("Métricas", color=c["texto"], weight="bold"), 
+                    bgcolor=c["superficie"], 
+                    color=config.COLOR_PRIMARIO, 
+                    elevation=0, 
+                    center_title=True
+                ), 
                 f.Container(content=f.Column([card_pie, f.Divider(height=20, color="transparent"), card_bar], scroll="auto"), padding=25, expand=True)
             ], bgcolor=c["fondo"]))
 
-        # --- NUEVA VISITA ---
+        # --- NUEVA VISITA / EDICIÓN ---
         if page.route == "/nueva_visita":
             datos_firma = {"trazos": []}
             datos_firma_individual = {"trazos": []}
@@ -226,9 +233,13 @@ def main(page: f.Page):
             btn_add_cli = f.IconButton(icon=f.Icons.SETTINGS, icon_color=config.COLOR_SECUNDARIO, tooltip="Gestionar Clientes", on_click=gestionar_clientes_dialog)
 
             col_usuarios = f.Column(spacing=15)
-            def cargar_usuarios(cliente):
+            
+            def cargar_usuarios(cliente, datos_edicion=None, actualizar_vista=True):
                 col_usuarios.controls.clear(); state_usuarios.clear()
-                if not cliente: col_usuarios.update(); return
+                if not cliente:
+                    if actualizar_vista: col_usuarios.update()
+                    return
+                
                 def agregar_usuario_dialog(e):
                     def guardar_nuevo_user(e):
                         if txt_n_user.value:
@@ -237,20 +248,61 @@ def main(page: f.Page):
                     txt_n_user = f.TextField(label="Nombre del Usuario", autofocus=True)
                     d_u = f.AlertDialog(title=f.Text(f"Nuevo usuario para {cliente}"), content=txt_n_user, actions=[f.TextButton("Cancelar", on_click=lambda e: page.close(d_u)), f.ElevatedButton("Guardar", on_click=guardar_nuevo_user)])
                     page.open(d_u)
+                
                 btn_crear_user = f.ElevatedButton("Agregar Usuario", icon=f.Icons.PERSON_ADD, on_click=agregar_usuario_dialog, bgcolor=config.COLOR_AZUL_SUAVE, color=config.COLOR_PRIMARIO, width=float("inf"))
                 col_usuarios.controls.append(btn_crear_user)
+                
                 nombres = database.obtener_usuarios_por_cliente(cliente)
+                
                 for i, nombre in enumerate(nombres):
-                    chk = f.Switch(label="Atendido", value=True, active_color=config.COLOR_PRIMARIO)
+                    val_atendido = True
+                    val_trabajo = ""
+                    val_motivo = ""
+                    val_fotos = []
+                    val_firma = None
+                    
+                    if datos_edicion:
+                        for u_prev in datos_edicion:
+                            if u_prev["nombre"] == nombre:
+                                val_atendido = u_prev["atendido"]
+                                val_trabajo = u_prev["trabajo"]
+                                val_motivo = u_prev["motivo"]
+                                val_fotos = u_prev["fotos"]
+                                val_firma = u_prev.get("firma")
+                                break
+                    
+                    chk = f.Switch(label="Atendido", value=val_atendido, active_color=config.COLOR_PRIMARIO)
                     bg_inp = "#E0F2FF" if app_state["tema"]=="light" else "#333333"; col_inp = "#000000" if app_state["tema"]=="light" else "#FFFFFF"
-                    txt_trabajo = f.TextField(label="Detalle del trabajo", value="", read_only=True, multiline=True, text_size=12, bgcolor=bg_inp, color=col_inp, border_color="transparent", border_radius=8)
-                    txt_motivo = f.TextField(label="Motivo de no atención", visible=False, text_size=13, bgcolor=config.COLOR_ROJO_SUAVE, color="black", border_color="transparent", border_radius=8)
+                    
+                    txt_trabajo = f.TextField(label="Detalle del trabajo", value=val_trabajo, read_only=True, multiline=True, text_size=12, bgcolor=bg_inp, color=col_inp, border_color="transparent", border_radius=8, visible=val_atendido)
+                    txt_motivo = f.TextField(label="Motivo de no atención", value=val_motivo, visible=not val_atendido, text_size=13, bgcolor=config.COLOR_ROJO_SUAVE, color="black", border_color="transparent", border_radius=8)
+                    
                     row_galeria = f.Row(scroll="auto", spacing=10)
-                    usr_state = {"nombre": nombre, "check": chk, "motivo": txt_motivo, "trabajo": txt_trabajo, "lista_fotos": [], "control_galeria": row_galeria, "firma": None}
+                    for p in val_fotos:
+                        row_galeria.controls.append(f.Container(content=f.Image(src=p, width=60, height=60, fit=f.ImageFit.COVER, border_radius=8), border=f.border.all(1, c["borde"]), border_radius=8))
+
+                    usr_state = {"nombre": nombre, "check": chk, "motivo": txt_motivo, "trabajo": txt_trabajo, "lista_fotos": list(val_fotos), "control_galeria": row_galeria, "firma": val_firma}
+                    
+                    # --- RESTAURACIÓN MEJORADA DE CHECKLIST ---
                     estado_tareas = {t: False for t in config.TAREAS_MANTENIMIENTO}
+                    if val_trabajo.startswith("Mantenimiento: "):
+                        tareas_texto = val_trabajo.replace("Mantenimiento: ", "")
+                        partes = tareas_texto.split(", ")
+                        for p in partes:
+                            if " (" in p and p.endswith(")"):
+                                parts = p.rsplit(" (", 1)
+                                if len(parts) == 2:
+                                    nombre_tarea = parts[0]
+                                    hora_tarea = parts[1][:-1]
+                                    if nombre_tarea in estado_tareas:
+                                        estado_tareas[nombre_tarea] = hora_tarea
+                            else:
+                                if p in estado_tareas: estado_tareas[p] = "OK"
+
                     def actualizar_txt_trabajo(dic, inp):
                         hechos = [f"{k} ({v})" for k, v in dic.items() if v]
                         inp.value = "Mantenimiento: " + ", ".join(hechos) if hechos else ""; inp.update()
+                        
                     def abrir_checklist(e, nom_u=nombre, dic_u=estado_tareas, inp_u=txt_trabajo):
                         lista_checks = []
                         for t in config.TAREAS_MANTENIMIENTO:
@@ -258,7 +310,9 @@ def main(page: f.Page):
                                 d[tarea] = utils.obtener_hora_chile().strftime("%H:%M") if e.control.value else False; actualizar_txt_trabajo(d, i)
                             lista_checks.append(f.Checkbox(label=t, value=bool(dic_u[t]), on_change=on_ch))
                         dlg_tareas = f.AlertDialog(title=f.Text(f"Checklist: {nom_u}"), content=f.Container(content=f.Column(lista_checks, height=300, scroll="auto"), padding=10), actions=[f.TextButton("Listo", on_click=lambda e: page.close(dlg_tareas))]); page.open(dlg_tareas)
+                    
                     btn_checklist = f.ElevatedButton("Checklist", icon=f.Icons.CHECKLIST, bgcolor=config.COLOR_SECUNDARIO, color="white", on_click=abrir_checklist)
+                    
                     canvas_ind = cv.Canvas(shapes=[]); gd_ind = f.GestureDetector(on_pan_start=lambda e: [datos_firma_individual["trazos"].append([(e.local_x, e.local_y)]), canvas_ind.shapes.append(cv.Path([cv.Path.MoveTo(e.local_x, e.local_y)], paint=f.Paint(stroke_width=3, color="black", style=f.PaintingStyle.STROKE))), canvas_ind.update()], on_pan_update=lambda e: [datos_firma_individual["trazos"][-1].append((e.local_x, e.local_y)), canvas_ind.shapes[-1].elements.append(cv.Path.LineTo(e.local_x, e.local_y)), canvas_ind.update()])
                     def abrir_firma_ind(e, u_st=usr_state):
                         datos_firma_individual["trazos"] = []; canvas_ind.shapes = []
@@ -267,19 +321,25 @@ def main(page: f.Page):
                             u_st["firma"] = path; page.close(d_f); page.open(f.SnackBar(f.Text("Firma guardada"), bgcolor="green"))
                         d_f = f.AlertDialog(title=f.Text(f"Firma: {nombre}"), content=f.Container(content=f.Stack([canvas_ind, gd_ind]), border=f.border.all(1, "grey"), width=300, height=200, bgcolor="white"), actions=[f.TextButton("Borrar", on_click=lambda e: [datos_firma_individual["trazos"].clear(), canvas_ind.shapes.clear(), canvas_ind.update()]), f.ElevatedButton("Guardar", on_click=guardar_f, bgcolor=config.COLOR_PRIMARIO, color="white")]); page.open(d_f)
                     btn_firma_ind = f.ElevatedButton("Firmar", icon=f.Icons.DRAW, bgcolor=config.COLOR_ACCENTO, color="white", on_click=abrir_firma_ind)
+                    
                     def pick_evidence(e, idx=i): usuario_actual_foto[0] = idx; fp.pick_files(allow_multiple=True, file_type=f.FilePickerFileType.ANY)
                     btn_galeria = f.IconButton(icon=f.Icons.ADD_PHOTO_ALTERNATE, icon_color=config.COLOR_ACCENTO, on_click=pick_evidence)
                     btn_camara = f.IconButton(icon=f.Icons.CAMERA_ALT, icon_color=config.COLOR_ACCENTO, on_click=pick_evidence)
-                    cont_detalles = f.Column([f.Divider(color=c["borde"]), f.Row([btn_checklist, btn_firma_ind], alignment="spaceBetween"), f.Row([btn_galeria, btn_camara, row_galeria], alignment="start")], visible=True)
+                    
+                    cont_detalles = f.Column([f.Divider(color=c["borde"]), f.Row([btn_checklist, btn_firma_ind], alignment="spaceBetween"), f.Row([btn_galeria, btn_camara, row_galeria], alignment="start")], visible=val_atendido)
+                    
                     def on_chk(e, tm=txt_motivo, tt=txt_trabajo, cd=cont_detalles):
                         v = e.control.value; tm.visible = not v; tt.visible = v; cd.visible = v; page.update()
                     chk.on_change = on_chk
                     def borrar_usuario_click(e, nom_u=nombre, cli_n=cliente):
                         if database.eliminar_usuario(nom_u, cli_n): cargar_usuarios(cli_n)
+                    
                     header_user = f.Row([f.Row([f.Icon(f.Icons.PERSON, color=config.COLOR_SECUNDARIO), f.Text(nombre, weight="bold", color=c["texto"], expand=True)]), f.Row([chk, f.IconButton(icon=f.Icons.DELETE_FOREVER, icon_color="red", icon_size=20, tooltip="Borrar Usuario", on_click=borrar_usuario_click)])], alignment="spaceBetween")
                     state_usuarios.append(usr_state)
                     col_usuarios.controls.append(f.Container(content=f.Column([header_user, txt_motivo, txt_trabajo, cont_detalles]), padding=10, border=f.border.all(1, c["borde"]), border_radius=8, margin=f.margin.only(bottom=10)))
-                col_usuarios.update()
+                
+                if actualizar_vista: col_usuarios.update()
+            
             dd_cli.on_change = lambda e: cargar_usuarios(e.control.value)
 
             txt_obs = f.TextField(label="Notas Adicionales (Opcional)", multiline=True, min_lines=3, filled=True, bgcolor=c["input_bg"], color=c["texto"], border_radius=12, text_size=14, border_color="transparent", prefix_icon=f.Icons.NOTE_ALT_OUTLINED)
@@ -292,9 +352,6 @@ def main(page: f.Page):
                 dlg_firma = f.AlertDialog(title=f.Text("Firma Global (Opcional)"), content=f.Container(content=f.Stack([canvas, gd]), border=f.border.all(1, "grey"), border_radius=10, width=300, height=200, bgcolor="white"), actions=[f.TextButton("Limpiar", on_click=lambda e: [datos_firma["trazos"].clear(), canvas.shapes.clear(), canvas.update()]), f.ElevatedButton("Finalizar", on_click=confirmar_click, bgcolor=config.COLOR_PRIMARIO, color="white")])
                 page.open(dlg_firma)
 
-            # Botones post-guardado (ELIMINADO: btn_ver)
-            btn_correo = f.ElevatedButton("Enviar Correo", icon=f.Icons.EMAIL, visible=False, bgcolor=config.COLOR_SECUNDARIO, color="white")
-            
             # --- FEEDBACK VISUAL ---
             progress_ring = f.ProgressRing(visible=False, width=20, height=20, color=config.COLOR_BLANCO)
             
@@ -303,8 +360,9 @@ def main(page: f.Page):
                     page.open(f.SnackBar(f.Text("Faltan datos clave"), bgcolor="red")); return
                 
                 btn_main_guardar.disabled = True
-                btn_main_guardar.text = "PROCESANDO..."
-                btn_main_guardar.content = f.Row([progress_ring, f.Text("PROCESANDO...")], alignment="center")
+                texto_btn = "ACTUALIZANDO..." if app_state["id_editar"] else "GUARDANDO..."
+                btn_main_guardar.text = texto_btn
+                btn_main_guardar.content = f.Row([progress_ring, f.Text(texto_btn)], alignment="center")
                 progress_ring.visible = True
                 page.update()
 
@@ -315,59 +373,69 @@ def main(page: f.Page):
                         datos_finales.append({"nombre": u["nombre"], "atendido": u["check"].value, "motivo": u["motivo"].value, "trabajo": u["trabajo"].value, "fotos": fotos, "firma": u["firma"]})
                     json_usr = json.dumps(datos_finales)
                     firma = utils.guardar_firma_img(datos_firma["trazos"]) if datos_firma["trazos"] else None
+                    
+                    # Generar PDF
                     pdf_path = pdf_generator.generar_pdf(dd_cli.value, dd_tec.value, txt_obs.value, firma, datos_finales)
                     ultimo_pdf_generado.value = pdf_path
                     
-                    estado_envio = 0
-                    msg_envio = "Guardado localmente. Pendiente de envío."
-                    color_snack = "orange"
+                    # Guardar en DB (SIN ENVIAR CORREO)
+                    fecha_actual = utils.obtener_hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                     
-                    try:
-                        email_destino = database.obtener_correo_cliente(dd_cli.value)
-                        config.CORREOS_POR_CLIENTE[dd_cli.value] = email_destino # Hack compatibilidad
-                        
-                        envio_ok, msg_graph = utils.enviar_correo_graph(pdf_path, dd_cli.value, dd_tec.value)
-                        
-                        # --- COMENTADO PORQUE NO ESTÁ APROBADO AÚN ---
-                        sharepoint_ok, msg_sharepoint = utils.subir_archivo_sharepoint(pdf_path, dd_cli.value)
-                        msg_sharepoint = "" 
+                    if app_state["id_editar"]:
+                        # UPDATE
+                        database.actualizar_reporte(app_state["id_editar"], fecha_actual, dd_cli.value, dd_tec.value, txt_obs.value, json.dumps(todas_fotos), pdf_path, json_usr, 0) # 0 = Pendiente
+                        msg_exito = "Reporte actualizado. Pendiente de envío."
+                    else:
+                        # INSERT
+                        database.guardar_reporte(fecha_actual, dd_cli.value, dd_tec.value, txt_obs.value, json.dumps(todas_fotos), pdf_path, json_usr, 0)
+                        msg_exito = "Guardado localmente. Pendiente de envío."
 
-                        if envio_ok:
-                            estado_envio = 1
-                            msg_envio = f"Email Enviado. {msg_sharepoint}"
-                            color_snack = "green"
-                        else:
-                            msg_envio = f"Email Falló: {msg_graph}. {msg_sharepoint}"
-                    except Exception as e_mail:
-                        print(f"Error Graph: {e_mail}")
+                    page.open(f.SnackBar(f.Text(msg_exito), bgcolor="green"))
                     
-                    database.guardar_reporte(utils.obtener_hora_chile().strftime('%Y-%m-%d %H:%M:%S'), dd_cli.value, dd_tec.value, txt_obs.value, json.dumps(todas_fotos), pdf_path, json_usr, estado_envio)
-                    
-                    page.open(f.SnackBar(f.Text(msg_envio), bgcolor=color_snack))
-                    
-                    # Botones post-guardado (ELIMINADO BOTON DE DESCARGAR PDF)
-                    btn_correo.visible = True; btn_correo.on_click = lambda _: [page.open(f.SnackBar(f.Text(msg_envio), bgcolor="blue"))]; btn_correo.update()
-                    
-                    # Limpiar
-                    txt_obs.value = ""; cargar_usuarios(dd_cli.value)
+                    # Redirigir al historial tras guardar
+                    page.go("/historial")
 
                 except Exception as ex:
                     page.open(f.SnackBar(f.Text(f"Error Crítico: {ex}"), bgcolor="red"))
+                    btn_main_guardar.content = None
+                    btn_main_guardar.text = "FINALIZAR VISITA"
+                    btn_main_guardar.disabled = False
                 
                 progress_ring.visible = False
-                btn_main_guardar.content = None
-                btn_main_guardar.text = "FINALIZAR VISITA"
-                btn_main_guardar.disabled = False
                 page.update()
 
-            btn_main_guardar = f.ElevatedButton("FINALIZAR VISITA", on_click=lambda e: abrir_dialogo_firma(e), height=60, style=f.ButtonStyle(bgcolor=config.COLOR_PRIMARIO, color="white", shape=f.RoundedRectangleBorder(radius=15)))
+            txt_btn_main = "GUARDAR CAMBIOS" if app_state["id_editar"] else "FINALIZAR VISITA"
+            btn_main_guardar = f.ElevatedButton(txt_btn_main, on_click=lambda e: abrir_dialogo_firma(e), height=60, style=f.ButtonStyle(bgcolor=config.COLOR_PRIMARIO, color="white", shape=f.RoundedRectangleBorder(radius=15)))
             
+            # --- CARGAR DATOS SI ES EDICIÓN ---
+            titulo_vista = "Nueva Visita"
+            if app_state["id_editar"]:
+                titulo_vista = "Editar Visita"
+                datos_existentes = database.obtener_reporte_por_id(app_state["id_editar"])
+                if datos_existentes:
+                    _, _, cli_db, tec_db, obs_db, _, _, detalles_db, _ = datos_existentes
+                    dd_cli.value = cli_db
+                    dd_tec.value = tec_db
+                    txt_obs.value = obs_db
+                    
+                    try:
+                        detalles_json = json.loads(detalles_db)
+                        cargar_usuarios(cli_db, detalles_json, actualizar_vista=False)
+                    except:
+                        cargar_usuarios(cli_db, actualizar_vista=False)
+
             page.views.append(f.View("/nueva_visita", controls=[
-                f.AppBar(title=f.Text("Nueva Visita", color=c["texto"]), bgcolor=c["superficie"], color=config.COLOR_PRIMARIO, elevation=0),
+                f.AppBar(
+                    leading=f.IconButton(icon=f.Icons.ARROW_BACK, icon_color=config.COLOR_PRIMARIO, on_click=lambda _: page.go("/")),
+                    title=f.Text(titulo_vista, color=c["texto"]), 
+                    bgcolor=c["superficie"], 
+                    color=config.COLOR_PRIMARIO, 
+                    elevation=0
+                ),
                 f.Container(content=f.Column([
                     crear_seccion(c, "Información", f.Column([f.Row([dd_cli, btn_add_cli]), f.Row([dd_tec, btn_add_tec])], spacing=15)),
                     crear_seccion(c, "Bitácora", col_usuarios),
-                    crear_seccion(c, "Cierre", f.Column([txt_obs, btn_main_guardar, f.Row([btn_correo], alignment="center", wrap=True)], spacing=10))
+                    crear_seccion(c, "Cierre", f.Column([txt_obs, btn_main_guardar], spacing=10))
                 ], scroll="auto"), padding=20, expand=True)
             ], bgcolor=c["fondo"]))
 
@@ -375,7 +443,6 @@ def main(page: f.Page):
         if page.route == "/historial":
             lista_items = []
             
-            # Función para sincronizar pendientes
             def sincronizar_pendientes(e):
                 pendientes = database.obtener_reportes_pendientes()
                 if not pendientes:
@@ -388,23 +455,16 @@ def main(page: f.Page):
                 
                 for p_id, p_pdf, p_cli, p_tec in pendientes:
                     try:
-                        # Asegurar email en config por compatibilidad
                         email_dest = database.obtener_correo_cliente(p_cli)
                         config.CORREOS_POR_CLIENTE[p_cli] = email_dest
-                        
-                        # --- CAMBIO A GRAPH ---
                         ok, msg = utils.enviar_correo_graph(p_pdf, p_cli, p_tec)
-                        
-                        # Comentado SharePoint
                         utils.subir_archivo_sharepoint(p_pdf, p_cli)
-
                         if ok:
                             database.actualizar_estado_email(p_id, 1)
                             enviados += 1
                     except: pass
                 
                 page.open(f.SnackBar(f.Text(f"Sincronización completa: {enviados}/{total} enviados"), bgcolor="green" if enviados==total else "orange"))
-                # Recargar vista
                 page.go("/dummy"); page.go("/historial")
 
             btn_sync = f.IconButton(icon=f.Icons.SYNC, tooltip="Enviar pendientes", on_click=sincronizar_pendientes, icon_color=config.COLOR_PRIMARIO)
@@ -417,6 +477,20 @@ def main(page: f.Page):
                     ex = pdf_p and os.path.exists(pdf_p)
                     icon_env = f.Icon(f.Icons.CHECK_CIRCLE, color="green") if enviado else f.Icon(f.Icons.ACCESS_TIME_FILLED, color="orange", tooltip="Pendiente de envío")
                     
+                    def editar_click(e, id_r=id_rep):
+                        app_state["id_editar"] = id_r
+                        page.go("/nueva_visita")
+
+                    def accion_reenviar(e, r_data=row, id_r=id_rep, cli_r=cli, tec_r=tec, pdf_r=pdf_p, dlg_ref=None):
+                        if dlg_ref: page.close(dlg_ref)
+                        page.open(f.SnackBar(f.Text("Enviando correo..."), bgcolor="blue"))
+                        page.update()
+                        ok, msg_env = utils.enviar_correo_graph(pdf_r, cli_r, tec_r)
+                        if ok: database.actualizar_estado_email(id_r, 1)
+                        page.open(f.SnackBar(f.Text(msg_env), bgcolor="green" if ok else "red"))
+                        page.go("/dummy")
+                        page.go("/historial")
+
                     def ver_detalle_modal(e, r_data=row):
                         _id, _fe, _cl, _te, _ob, _pd, _en, _det, _im = r_data
                         header_modal = f.Container(content=f.Column([f.Image(src="logo2.png", height=40), f.Text("REPORTE DE VISITA", weight="bold", size=18, color=config.COLOR_PRIMARIO), f.Text(f"{_cl} - {_fe}", size=12, color="grey")], horizontal_alignment="center"), bgcolor=c["card_bg"], padding=10, border_radius=10)
@@ -432,21 +506,49 @@ def main(page: f.Page):
                                     firma_ui = f.Image(src=u['firma'], width=150) if u.get('firma') else f.Container()
                                     usuarios_ui.append(f.Container(content=f.Column([f.Text(f"{st} {u['nombre']}", weight="bold", color=c["texto"]), f.Text(desc, size=12, color=c["texto_sec"]), fotos_ui, f.Text("Firma:", size=10) if u.get('firma') else f.Container(), firma_ui, f.Divider()]), padding=10, border=f.border.all(1, "grey300"), border_radius=8, bgcolor=c["input_bg"]))
                             except: pass
-                        dlg = f.AlertDialog(content=f.Container(content=f.Column([header_modal, f.Text(f"Tec: {_te}", color=c["texto"], weight="bold"), f.Divider(), f.Column(usuarios_ui, scroll="auto", expand=True), f.Text(f"Nota: {_ob}", italic=True, color=c["texto_sec"])], scroll="auto"), width=600, height=700), actions=[f.TextButton("Cerrar", on_click=lambda e: page.close(dlg)), f.TextButton("Reenviar", icon=f.Icons.SEND, on_click=lambda e: [page.open(f.SnackBar(f.Text(utils.enviar_correo_graph(_pd, _cl, _te)[1]), bgcolor="blue")), database.actualizar_estado_email(_id, 1), page.go("/dummy"), page.go("/historial")])], inset_padding=10)
+                        
+                        dlg = f.AlertDialog()
+                        btn_reenviar = f.TextButton("Enviar Email", icon=f.Icons.SEND, on_click=lambda e: accion_reenviar(e, row, _id, _cl, _te, _pd, dlg))
+                        
+                        dlg.content = f.Container(content=f.Column([header_modal, f.Text(f"Tec: {_te}", color=c["texto"], weight="bold"), f.Divider(), f.Column(usuarios_ui, scroll="auto", expand=True), f.Text(f"Nota: {_ob}", italic=True, color=c["texto_sec"])], scroll="auto"), width=600, height=700)
+                        dlg.actions = [f.TextButton("Cerrar", on_click=lambda e: page.close(dlg)), btn_reenviar]
+                        dlg.inset_padding = 10
                         page.open(dlg)
                     
-                    # ELIMINADO: TextButton "Descargar PDF" de la tarjeta de historial
-                    lista_items.append(f.Container(content=f.Column([f.Row([f.Row([f.Container(content=f.Icon(f.Icons.DESCRIPTION, color=config.COLOR_BLANCO), bgcolor=config.COLOR_PRIMARIO if ex else "grey", padding=10, border_radius=12), f.Column([f.Text(cli, weight="bold", color=c["texto"]), f.Text(fecha, size=12, color=c["texto_sec"])], spacing=0)]), icon_env], alignment="spaceBetween"), f.Divider(color=c["borde"]), f.Row([f.Text(f"Tec: {tec}", color=c["texto"]), f.IconButton(icon=f.Icons.VISIBILITY, icon_color=config.COLOR_PRIMARIO, on_click=ver_detalle_modal)], alignment="end")]), padding=15, bgcolor=c["card_bg"], border_radius=12, shadow=f.BoxShadow(blur_radius=5, color=c["sombra"]), margin=f.margin.only(bottom=10)))
+                    lista_items.append(f.Container(content=f.Column([
+                        f.Row([
+                            f.Row([f.Container(content=f.Icon(f.Icons.DESCRIPTION, color=config.COLOR_BLANCO), bgcolor=config.COLOR_PRIMARIO if ex else "grey", padding=10, border_radius=12), 
+                                   f.Column([f.Text(cli, weight="bold", color=c["texto"]), f.Text(fecha, size=12, color=c["texto_sec"])], spacing=0)]), 
+                            icon_env
+                        ], alignment="spaceBetween"), 
+                        f.Divider(color=c["borde"]), 
+                        f.Row([
+                            f.Text(f"Tec: {tec}", color=c["texto"]), 
+                            f.Row([
+                                f.IconButton(icon=f.Icons.EDIT, icon_color="orange", tooltip="Editar", on_click=editar_click),
+                                f.IconButton(icon=f.Icons.VISIBILITY, icon_color=config.COLOR_PRIMARIO, tooltip="Ver detalle", on_click=ver_detalle_modal)
+                            ])
+                        ], alignment="spaceBetween")
+                    ]), padding=15, bgcolor=c["card_bg"], border_radius=12, shadow=f.BoxShadow(blur_radius=5, color=c["sombra"]), margin=f.margin.only(bottom=10)))
             
             page.views.append(f.View("/historial", controls=[
-                f.AppBar(title=f.Text("Historial", color=c["texto"]), bgcolor=c["superficie"], color=config.COLOR_PRIMARIO, elevation=0, actions=[btn_sync]),
+                f.AppBar(
+                    leading=f.IconButton(icon=f.Icons.ARROW_BACK, icon_color=config.COLOR_PRIMARIO, on_click=lambda _: page.go("/")),
+                    title=f.Text("Historial", color=c["texto"]), 
+                    bgcolor=c["superficie"], 
+                    color=config.COLOR_PRIMARIO, 
+                    elevation=0, 
+                    actions=[btn_sync]
+                ),
                 f.Container(content=f.ListView(controls=lista_items, spacing=5, padding=20), expand=True)
             ], bgcolor=c["fondo"]))
         
         page.update()
 
     def view_pop(view):
-        page.views.pop()
+        if len(page.views) > 0:
+            page.views.pop()
+        
         if len(page.views) > 0:
             top_view = page.views[-1]
             page.go(top_view.route)

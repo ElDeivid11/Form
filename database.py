@@ -43,30 +43,16 @@ def inicializar_db():
     """)
 
     # --- MIGRACIONES DE COLUMNAS ---
-    try:
-        cur.execute("ALTER TABLE reportes ADD COLUMN pdf_path TEXT")
-    except:
-        pass
-
-    try:
-        cur.execute("ALTER TABLE reportes ADD COLUMN detalles_usuarios TEXT")
-    except:
-        pass
-
-    try:
-        cur.execute("ALTER TABLE reportes ADD COLUMN email_enviado INTEGER DEFAULT 0")
-    except:
-        pass
-
-    try:
-        cur.execute("ALTER TABLE reportes ADD COLUMN latitud TEXT")
-    except:
-        pass
-
-    try:
-        cur.execute("ALTER TABLE reportes ADD COLUMN longitud TEXT")
-    except:
-        pass
+    try: cur.execute("ALTER TABLE reportes ADD COLUMN pdf_path TEXT")
+    except: pass
+    try: cur.execute("ALTER TABLE reportes ADD COLUMN detalles_usuarios TEXT")
+    except: pass
+    try: cur.execute("ALTER TABLE reportes ADD COLUMN email_enviado INTEGER DEFAULT 0")
+    except: pass
+    try: cur.execute("ALTER TABLE reportes ADD COLUMN latitud TEXT")
+    except: pass
+    try: cur.execute("ALTER TABLE reportes ADD COLUMN longitud TEXT")
+    except: pass
 
     # --- DATOS POR DEFECTO ---
     cur.execute("SELECT COUNT(*) FROM tecnicos")
@@ -214,6 +200,14 @@ def obtener_historial():
     con.close()
     return datos
 
+def obtener_reporte_por_id(id_reporte):
+    con = conectar()
+    cur = con.cursor()
+    cur.execute("SELECT id, fecha, cliente, tecnico, observaciones, pdf_path, email_enviado, detalles_usuarios, imagen_path FROM reportes WHERE id = ?", (id_reporte,))
+    dato = cur.fetchone()
+    con.close()
+    return dato
+
 def obtener_datos_clientes():
     con = conectar()
     cur = con.cursor()
@@ -244,6 +238,17 @@ def guardar_reporte(fecha, cliente, tecnico, obs, fotos_json, pdf_path, detalles
         INSERT INTO reportes (fecha, cliente, tecnico, observaciones, imagen_path, pdf_path, detalles_usuarios, email_enviado, latitud, longitud) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (fecha, cliente, tecnico, obs, fotos_json, pdf_path, detalles_json, estado_envio, lat, lon))
+    con.commit()
+    con.close()
+
+def actualizar_reporte(id_reporte, fecha, cliente, tecnico, obs, fotos_json, pdf_path, detalles_json, estado_envio):
+    con = conectar()
+    cur = con.cursor()
+    cur.execute("""
+        UPDATE reportes 
+        SET fecha=?, cliente=?, tecnico=?, observaciones=?, imagen_path=?, pdf_path=?, detalles_usuarios=?, email_enviado=?
+        WHERE id=?
+    """, (fecha, cliente, tecnico, obs, fotos_json, pdf_path, detalles_json, estado_envio, id_reporte))
     con.commit()
     con.close()
 

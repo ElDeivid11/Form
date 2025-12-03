@@ -37,6 +37,8 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install flet
+          # IMPORTANTE: Instalar librerías nativas para la cámara
+          pip install plyer pyjnius
 
       - name: Accept Android Licenses
         run: |
@@ -44,10 +46,9 @@ jobs:
 
       - name: Build APK
         run: |
-          # AGREGADO:
-          # --product "Tecnocomp": Pone el nombre visible debajo del ícono.
-          # --permissions: Habilita cámara y galería.
-          # Flet busca automáticamente la carpeta "assets" con "icon.png" dentro.
+          # --product: Nombre visible de la app
+          # --permissions camera: Habilita el hardware de cámara
+          # --permissions photo_library: Habilita lectura/escritura de imágenes
           flet build apk --verbose --product "Tecnocomp" --permissions camera photo_library
 
       - name: Upload APK artifact

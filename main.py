@@ -9,6 +9,15 @@ import database
 import utils
 import pdf_generator
 
+# --- IMPORTACIÓN SEGURA DE PLYER ---
+# Esto evita que la app se rompa en Windows donde no existe cámara nativa
+camera = None
+try:
+    from plyer import camera
+except Exception as e:
+    print(f"Advertencia: Plyer no está disponible o no soporta esta plataforma ({e}). Se usará modo compatibilidad.")
+    camera = None
+
 def main(page: f.Page):
     page.title = "Tecnocomp Mobile"
     page.window_width = 400
@@ -126,9 +135,8 @@ def main(page: f.Page):
         page.views.clear()
         c = config.COLORES[app_state["tema"]]
         
-        # --- Helper para opacidad (Arregla el error 'f.with_opacity') ---
+        # Helper para opacidad (Arregla 'with_opacity')
         def obtener_color_opacidad(color_hex, opacity):
-            # Convierte #RRGGBB a #AARRGGBB
             if not color_hex: return None
             color_hex = color_hex.lstrip('#')
             alpha = int(opacity * 255)
@@ -153,13 +161,11 @@ def main(page: f.Page):
 
         # --- METRICAS PROFESIONALES ---
         if page.route == "/metricas":
-            # 1. Obtener Datos
             data_cli = database.obtener_datos_clientes()
             data_tec = database.obtener_datos_tecnicos()
             total, pendientes, top_cliente = database.obtener_kpis_generales()
             data_mes = database.obtener_evolucion_mensual()
 
-            # 2. Helpers de UI
             def crear_kpi_card(titulo, valor, icono, color_bg, color_ico):
                 return f.Container(
                     content=f.Column([
@@ -171,32 +177,20 @@ def main(page: f.Page):
                     expand=True
                 )
 
-            # 3. Construcción de Gráficos
-            # -- KPIs --
             row_kpis = f.Row([
                 crear_kpi_card("Total Visitas", total, f.Icons.NUMBERS, c["card_bg"], config.COLOR_PRIMARIO),
                 crear_kpi_card("Pendientes", pendientes, f.Icons.PENDING_ACTIONS, c["card_bg"], "orange"),
                 crear_kpi_card("Top Cliente", top_cliente.split('(')[0][:10], f.Icons.STAR, c["card_bg"], "purple"),
             ], spacing=10)
 
-            # -- Línea de Evolución --
             if data_mes:
                 puntos_linea = [f.LineChartDataPoint(i, count) for i, (mes, count) in enumerate(data_mes)]
                 etiquetas_x = [f.ChartAxisLabel(value=i, label=f.Text(mes[5:], size=10, weight="bold")) for i, (mes, count) in enumerate(data_mes)]
                 max_y = max([x[1] for x in data_mes]) + 2
-                
-                # COLOR CORREGIDO AQUÍ
                 color_sombreado = obtener_color_opacidad(config.COLOR_ACCENTO, 0.2)
                 
                 chart_line = f.LineChart(
-                    data_series=[f.LineChartData(
-                        data_points=puntos_linea, 
-                        stroke_width=4, 
-                        color=config.COLOR_ACCENTO, 
-                        curved=True,
-                        stroke_cap_round=True, 
-                        below_line_bgcolor=color_sombreado
-                    )],
+                    data_series=[f.LineChartData(data_points=puntos_linea, stroke_width=4, color=config.COLOR_ACCENTO, curved=True, stroke_cap_round=True, below_line_bgcolor=color_sombreado)],
                     border=f.border.all(0),
                     left_axis=f.ChartAxis(labels_size=30),
                     bottom_axis=f.ChartAxis(labels=etiquetas_x, labels_size=20),
@@ -206,59 +200,26 @@ def main(page: f.Page):
             else:
                 chart_line = f.Text("Sin datos históricos", color="grey")
 
-            container_linea = f.Container(
-                content=f.Column([
-                    f.Text("Tendencia Mensual", size=16, weight="bold", color=c["texto"]),
-                    f.Divider(height=10, color="transparent"),
-                    chart_line
-                ]),
-                bgcolor=c["card_bg"], padding=20, border_radius=16, shadow=f.BoxShadow(blur_radius=10, color=c["sombra"])
-            )
+            container_linea = f.Container(content=f.Column([f.Text("Tendencia Mensual", size=16, weight="bold", color=c["texto"]), f.Divider(height=10, color="transparent"), chart_line]), bgcolor=c["card_bg"], padding=20, border_radius=16, shadow=f.BoxShadow(blur_radius=10, color=c["sombra"]))
 
-            # -- Clientes (Pie) --
             pie_sections = [f.PieChartSection(value=val, title=f"{val}", color=config.COLORES_GRAFICOS[i%len(config.COLORES_GRAFICOS)], radius=50, title_style=f.TextStyle(size=12, color="white", weight="bold")) for i, (key, val) in enumerate(data_cli)]
             chart_pie = f.PieChart(sections=pie_sections, sections_space=2, center_space_radius=30, height=200) if pie_sections else f.Text("Sin datos")
             
-            # Leyenda manual para Pie (más limpio)
             legend_items = []
-            for i, (key, val) in enumerate(data_cli[:4]): # Solo top 4
-                legend_items.append(f.Row([
-                    f.Container(width=10, height=10, bgcolor=config.COLORES_GRAFICOS[i%len(config.COLORES_GRAFICOS)], border_radius=2),
-                    f.Text(key, size=10, color=c["texto_sec"], no_wrap=True)
-                ], spacing=5))
+            for i, (key, val) in enumerate(data_cli[:4]): 
+                legend_items.append(f.Row([f.Container(width=10, height=10, bgcolor=config.COLORES_GRAFICOS[i%len(config.COLORES_GRAFICOS)], border_radius=2), f.Text(key, size=10, color=c["texto_sec"], no_wrap=True)], spacing=5))
             
             col_pie = f.Column([f.Text("Por Cliente", weight="bold", color=c["texto"]), chart_pie, f.Column(legend_items, spacing=2)], horizontal_alignment="center", spacing=10)
             container_pie = f.Container(content=col_pie, bgcolor=c["card_bg"], padding=15, border_radius=16, shadow=f.BoxShadow(blur_radius=10, color=c["sombra"]), expand=True)
 
-            # -- Técnicos (Bar) --
             bar_groups = [f.BarChartGroup(x=i, bar_rods=[f.BarChartRod(from_y=0, to_y=val, width=20, color=config.COLOR_PRIMARIO, border_radius=4)]) for i, (key, val) in enumerate(data_tec)]
-            chart_bar = f.BarChart(
-                bar_groups=bar_groups, border=f.border.all(0),
-                left_axis=f.ChartAxis(labels_size=25),
-                bottom_axis=f.ChartAxis(labels=[f.ChartAxisLabel(value=i, label=f.Text(key[:3], size=10)) for i, (key, val) in enumerate(data_tec)]),
-                height=180
-            ) if bar_groups else f.Text("Sin datos")
-            
+            chart_bar = f.BarChart(bar_groups=bar_groups, border=f.border.all(0), left_axis=f.ChartAxis(labels_size=25), bottom_axis=f.ChartAxis(labels=[f.ChartAxisLabel(value=i, label=f.Text(key[:3], size=10)) for i, (key, val) in enumerate(data_tec)]), height=180) if bar_groups else f.Text("Sin datos")
             col_bar = f.Column([f.Text("Por Técnico", weight="bold", color=c["texto"]), chart_bar], horizontal_alignment="center", spacing=20)
             container_bar = f.Container(content=col_bar, bgcolor=c["card_bg"], padding=15, border_radius=16, shadow=f.BoxShadow(blur_radius=10, color=c["sombra"]), expand=True)
 
-            # 4. Ensamblaje de Vista
             page.views.append(f.View("/metricas", controls=[
-                f.AppBar(
-                    leading=f.IconButton(icon=f.Icons.ARROW_BACK, icon_color=config.COLOR_PRIMARIO, on_click=lambda _: page.go("/")),
-                    title=f.Text("Dashboard", color=c["texto"], weight="bold"), 
-                    bgcolor=c["superficie"], 
-                    color=config.COLOR_PRIMARIO, 
-                    elevation=0, 
-                    center_title=True
-                ), 
-                f.Container(content=f.Column([
-                    row_kpis,
-                    f.Divider(height=10, color="transparent"),
-                    container_linea,
-                    f.Divider(height=10, color="transparent"),
-                    f.Row([container_pie, container_bar], spacing=10)
-                ], scroll="auto"), padding=20, expand=True)
+                f.AppBar(leading=f.IconButton(icon=f.Icons.ARROW_BACK, icon_color=config.COLOR_PRIMARIO, on_click=lambda _: page.go("/")), title=f.Text("Dashboard", color=c["texto"], weight="bold"), bgcolor=c["superficie"], color=config.COLOR_PRIMARIO, elevation=0, center_title=True), 
+                f.Container(content=f.Column([row_kpis, f.Divider(height=10, color="transparent"), container_linea, f.Divider(height=10, color="transparent"), f.Row([container_pie, container_bar], spacing=10)], scroll="auto"), padding=20, expand=True)
             ], bgcolor=c["fondo"]))
 
         # --- NUEVA VISITA / EDICIÓN ---
@@ -280,6 +241,33 @@ def main(page: f.Page):
                         u["control_galeria"].controls.append(f.Container(content=f.Image(src=p, width=60, height=60, fit=f.ImageFit.COVER, border_radius=8), border=f.border.all(1, c["borde"]), border_radius=8, shadow=f.BoxShadow(blur_radius=5, color=c["sombra"])))
                     u["control_galeria"].update()
                     page.open(f.SnackBar(f.Text(f"Fotos agregadas"), bgcolor="green"))
+
+            # --- INTEGRACIÓN CÁMARA PLYER ---
+            def on_camera_complete(path):
+                if usuario_actual_foto[0] is not None:
+                    if os.path.exists(path):
+                        u = state_usuarios[usuario_actual_foto[0]]
+                        u["lista_fotos"].append(path)
+                        img_widget = f.Container(content=f.Image(src=path, width=60, height=60, fit=f.ImageFit.COVER, border_radius=8), border=f.border.all(1, c["borde"]), border_radius=8)
+                        u["control_galeria"].controls.append(img_widget)
+                        u["control_galeria"].update()
+                        page.open(f.SnackBar(f.Text("Foto nativa guardada"), bgcolor="green"))
+                        page.update()
+
+            def abrir_camara_nativa(e, idx):
+                usuario_actual_foto[0] = idx
+                try:
+                    if camera:
+                        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                        filename = os.path.join(os.getcwd(), f"foto_{timestamp}.jpg")
+                        camera.take_picture(filename, on_complete=on_camera_complete)
+                        page.open(f.SnackBar(f.Text("Abriendo cámara nativa..."), bgcolor="blue"))
+                    else:
+                        page.open(f.SnackBar(f.Text("Cámara nativa no disponible en Windows. Usa 'Galería'."), bgcolor="orange"))
+                    page.update()
+                except Exception as ex:
+                    page.open(f.SnackBar(f.Text(f"Error cámara: {ex}"), bgcolor="red"))
+                    page.update()
 
             lista_tecnicos = database.obtener_tecnicos()
             dd_tec = f.Dropdown(label="Técnico Responsable", options=[f.dropdown.Option(t) for t in lista_tecnicos], filled=True, bgcolor=c["input_bg"], color=c["texto"], border_radius=12, border_color="transparent", text_size=14, expand=True)
@@ -424,16 +412,16 @@ def main(page: f.Page):
                     
                     btn_firma_ind = f.ElevatedButton("Firmar", icon=f.Icons.DRAW, bgcolor=config.COLOR_ACCENTO, color="white", on_click=abrir_firma_ind)
                     
+                    # Logica de Fotos (Galeria / Cámara Nativa)
                     def pick_evidence(e, idx=i): usuario_actual_foto[0] = idx; fp.pick_files(allow_multiple=True, file_type=f.FilePickerFileType.ANY)
-                    btn_galeria = f.IconButton(icon=f.Icons.ADD_PHOTO_ALTERNATE, icon_color=config.COLOR_ACCENTO, on_click=pick_evidence)
-                    btn_camara = f.IconButton(icon=f.Icons.CAMERA_ALT, icon_color=config.COLOR_ACCENTO, on_click=pick_evidence)
+                    def click_camara(e, idx=i): abrir_camara_nativa(e, idx)
+
+                    btn_galeria = f.IconButton(icon=f.Icons.ADD_PHOTO_ALTERNATE, icon_color=config.COLOR_ACCENTO, tooltip="Galería", on_click=pick_evidence)
+                    btn_camara = f.IconButton(icon=f.Icons.CAMERA_ALT, icon_color=config.COLOR_ACCENTO, tooltip="Cámara Nativa", on_click=click_camara)
                     
                     cont_detalles = f.Column([
                         f.Divider(color=c["borde"]), 
-                        f.Row([
-                            btn_checklist, 
-                            f.Row([btn_firma_ind, icon_check_firma], spacing=5)
-                        ], alignment="spaceBetween"), 
+                        f.Row([btn_checklist, f.Row([btn_firma_ind, icon_check_firma], spacing=5)], alignment="spaceBetween"), 
                         f.Row([btn_galeria, btn_camara, row_galeria], alignment="start")
                     ], visible=val_atendido)
                     

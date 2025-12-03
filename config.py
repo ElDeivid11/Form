@@ -8,13 +8,18 @@ FONT_FAMILY = "Poppins"
 NOMBRE_EMPRESA_ONEDRIVE = "Tecnocomp Computacion Ltda"
 CARPETA_LOCAL_INFORMES = "Informes"
 
-# Tareas por defecto
+# Tareas de Mantenimiento (Actualizadas según procedimiento oficial)
 TAREAS_MANTENIMIENTO = [
-    "Borrar Temporales", "Actualizaciones Windows", "Revisión Antivirus",
-    "Limpieza Física", "Optimización Disco", "Revisión Cables"
+    "Solicitar cierre de documentos y credenciales",
+    "Reinicio Forzado (Shutdown -r -f -t 00)",
+    "Borrar Temporales (%temp%)",
+    "Borrar Papelera (Consultar al usuario)",
+    "Comprobador de Errores (Tomar Evidencia)",
+    "Windows Update (Validar parches grandes/Foto)",
+    "Antivirus (Escaneo Rápido + Evidencia)"
 ]
 
-# DATOS INICIALES (Necesarios para la migración a Base de Datos)
+# DATOS INICIALES
 CORREOS_POR_CLIENTE = {
     "Intermar": "contacto@intermar.cl",
     "Las200": "admin@las200.cl"
@@ -29,11 +34,17 @@ USUARIOS_POR_CLIENTE = {
 # CONFIGURACIÓN DE EMAIL (MICROSOFT GRAPH - OFICIAL)
 # ==========================================
 # Debes obtener estos datos en portal.azure.com > App Registrations
-# Permiso requerido en Azure: Mail.Send (Application)
 GRAPH_CLIENT_ID = "87031f88-8c50-4364-85e5-077be791f083"
 GRAPH_CLIENT_SECRET = "IFH8Q~3m-PbYWbiRKUqQKHmP5cSUsOH1sTTzobNZ"
 GRAPH_TENANT_ID = "00ed6bb9-1aca-4148-8f24-ee2de2078796"
 GRAPH_USER_EMAIL = "soporte@tecnocomp.cl"
+
+# ==========================================
+# CONFIGURACIÓN SHAREPOINT (PENDIENTE APROBACIÓN)
+# ==========================================
+SHAREPOINT_HOST_NAME = "tecnocompcomputacion.sharepoint.com" 
+SHAREPOINT_SITE_PATH = "/sites/Pruueba" 
+SHAREPOINT_DRIVE_NAME = "Documentos"
 
 # ==========================================
 # ESTILOS Y COLORES

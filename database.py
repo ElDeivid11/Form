@@ -42,7 +42,7 @@ def inicializar_db():
         )
     """)
 
-    # --- MIGRACIONES DE COLUMNAS (Manejo de errores corregido) ---
+    # --- MIGRACIONES DE COLUMNAS ---
     try:
         cur.execute("ALTER TABLE reportes ADD COLUMN pdf_path TEXT")
     except:

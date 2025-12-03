@@ -13,119 +13,214 @@ def obtener_hora_chile():
     except:
         return datetime.datetime.now()
 
-def enviar_correo_graph(ruta_pdf, cliente, tecnico):
-    """
-    Envía el correo usando la API oficial de Microsoft Graph.
-    Requiere que la App esté registrada en Azure con permiso Mail.Send
-    """
-    if not os.path.exists(ruta_pdf):
-        return False, "PDF no existe."
-    
-    # Obtener destinatario
-    destinatario = config.CORREOS_POR_CLIENTE.get(cliente, "")
-    if not destinatario:
-        return False, f"No hay correo para {cliente}"
-
-    # 1. Autenticación (Obtener Token)
-    token_url = f"https://login.microsoftonline.com/{config.GRAPH_TENANT_ID}/oauth2/v2.0/token"
-    token_data = {
+# --- HELPER INTERNO PARA AUTH (Token Único) ---
+def _obtener_token_graph():
+    url = f"https://login.microsoftonline.com/{config.GRAPH_TENANT_ID}/oauth2/v2.0/token"
+    data = {
         'grant_type': 'client_credentials',
         'client_id': config.GRAPH_CLIENT_ID,
         'client_secret': config.GRAPH_CLIENT_SECRET,
         'scope': 'https://graph.microsoft.com/.default'
     }
-    
     try:
-        token_r = requests.post(token_url, data=token_data)
-        token_json = token_r.json()
-        if 'access_token' not in token_json:
-            return False, f"Error Auth Azure: {token_json.get('error_description', 'Desconocido')}"
-        access_token = token_json['access_token']
+        r = requests.post(url, data=data)
+        js = r.json()
+        if 'access_token' in js:
+            return js['access_token']
+        print(f"Error Token: {js}")
+        return None
     except Exception as e:
-        return False, f"Error conexión Azure: {e}"
+        print(f"Excepción Token: {e}")
+        return None
 
-    # 2. Preparar PDF en Base64
+# --- HELPER PARA LIMPIAR NOMBRES DE CARPETAS ---
+def _sanitizar_nombre(nombre):
+    """Elimina caracteres ilegales para carpetas de SharePoint"""
+    if not nombre: return "SinNombre"
+    # Caracteres prohibidos en SharePoint/OneDrive
+    for char in ['"', '*', ':', '<', '>', '?', '/', '\\', '|']:
+        nombre = nombre.replace(char, '')
+    return nombre.strip()
+
+# --- SHAREPOINT (SUBIDA AUTOMÁTICA DINÁMICA) ---
+def subir_archivo_sharepoint(ruta_local, cliente):
+    """
+    Sube el PDF a SharePoint creando la estructura: /NombreCliente/YYYY-MM-DD/Archivo.pdf
+    La carpeta del cliente se crea dinámicamente según lo seleccionado en la App.
+    """
+    if not os.path.exists(ruta_local):
+        return False, "Archivo local no existe"
+
+    token = _obtener_token_graph()
+    if not token:
+        return False, "No se pudo autenticar con Graph"
+
+    headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+    filename = os.path.basename(ruta_local)
+    
+    # Definimos la estructura dinámica
+    cliente_limpio = _sanitizar_nombre(cliente) # Ej: "Intermar" o "Las200"
+    fecha_carpeta = obtener_hora_chile().strftime('%Y-%m-%d') # Ej: "2025-12-03"
+
+    try:
+        # 1. Obtener ID del Sitio
+        site_url = f"https://graph.microsoft.com/v1.0/sites/{config.SHAREPOINT_HOST_NAME}:{config.SHAREPOINT_SITE_PATH}"
+        r_site = requests.get(site_url, headers=headers)
+        if r_site.status_code != 200:
+            return False, f"Error buscando Sitio SharePoint ({config.SHAREPOINT_SITE_PATH}): {r_site.text}"
+        
+        site_id = r_site.json()['id']
+
+        # 2. Obtener ID del Drive (Documentos)
+        drives_url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/drives"
+        r_drives = requests.get(drives_url, headers=headers)
+        drive_id = None
+        
+        # Buscar el drive correcto por nombre configurado
+        for d in r_drives.json().get('value', []):
+            if d['name'] == config.SHAREPOINT_DRIVE_NAME or d['name'] == "Documents" or d['name'] == "Documentos":
+                drive_id = d['id']
+                break
+        
+        if not drive_id and r_drives.json().get('value'):
+            drive_id = r_drives.json()['value'][0]['id'] # Fallback
+
+        if not drive_id:
+            return False, "No se encontró la biblioteca de documentos"
+
+        # 3. Construir ruta dinámica y Subir
+        # Estructura final: /NombreCliente/2025-12-03/Reporte...pdf
+        ruta_sharepoint = f"/{cliente_limpio}/{fecha_carpeta}/{filename}"
+        
+        # API Endpoint para subir contenido (PUT crea carpetas automáticamente)
+        upload_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:{ruta_sharepoint}:/content"
+
+        with open(ruta_local, 'rb') as f_upload:
+            headers_put = headers.copy()
+            headers_put['Content-Type'] = 'application/pdf'
+            r_up = requests.put(upload_url, headers=headers_put, data=f_upload)
+
+        if r_up.status_code in [200, 201]:
+            return True, f"Subido a carpeta '{cliente_limpio}/{fecha_carpeta}'"
+        else:
+            return False, f"Error subida SP: {r_up.status_code}"
+
+    except Exception as e:
+        return False, f"Excepción SharePoint: {e}"
+
+# --- EMAIL OFICIAL (DISEÑO MEJORADO) ---
+def enviar_correo_graph(ruta_pdf, cliente, tecnico):
+    if not os.path.exists(ruta_pdf): return False, "PDF no existe."
+    
+    destinatario = config.CORREOS_POR_CLIENTE.get(cliente, "")
+    if not destinatario: return False, f"No hay correo para {cliente}"
+
+    token = _obtener_token_graph()
+    if not token: return False, "Error Auth Azure"
+
     with open(ruta_pdf, "rb") as f:
         pdf_content = base64.b64encode(f.read()).decode("utf-8")
     
-    nombre_pdf = os.path.basename(ruta_pdf)
+    # --- PLANTILLA HTML PROFESIONAL ---
+    color_brand = config.COLOR_PRIMARIO
     fecha_hoy = obtener_hora_chile().strftime('%d/%m/%Y')
     
-    # 3. Construir HTML (Escapado para JSON)
-    color_brand = config.COLOR_PRIMARIO
     html_body = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body {{ margin: 0; padding: 0; background-color: #f4f4f4; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }}
+            .email-container {{ max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-top: 20px; margin-bottom: 20px; }}
+            .header {{ background-color: {color_brand}; color: #ffffff; padding: 30px 20px; text-align: center; }}
+            .header h1 {{ margin: 0; font-size: 24px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }}
+            .content {{ padding: 40px 30px; color: #333333; line-height: 1.6; }}
+            .greeting {{ font-size: 18px; margin-bottom: 20px; color: #2c3e50; }}
+            .info-card {{ background-color: #f8f9fa; border-left: 5px solid {color_brand}; padding: 20px; margin: 25px 0; border-radius: 4px; }}
+            .info-row {{ margin-bottom: 10px; display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding-bottom: 5px; }}
+            .info-row:last-child {{ border-bottom: none; margin-bottom: 0; padding-bottom: 0; }}
+            .info-label {{ font-weight: bold; color: #7f8c8d; text-transform: uppercase; font-size: 12px; }}
+            .info-value {{ font-weight: 600; color: #2c3e50; text-align: right; }}
+            .btn-fake {{ display: block; width: 200px; margin: 30px auto; padding: 12px 0; background-color: {color_brand}; color: #ffffff !important; text-align: center; text-decoration: none; border-radius: 25px; font-weight: bold; font-size: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
+            .footer {{ background-color: #ecf0f1; padding: 20px; text-align: center; font-size: 12px; color: #95a5a6; border-top: 1px solid #e0e0e0; }}
+            .footer p {{ margin: 5px 0; }}
+        </style>
     </head>
-    <body style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f4; padding: 20px;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #e0e0e0;">
-            <div style="background-color: {color_brand}; color: #ffffff; padding: 20px; text-align: center;">
-                <h1 style="margin: 0; font-size: 24px;">Reporte de Visita Técnica</h1>
+    <body>
+        <div class="email-container">
+            <div class="header">
+                <h1>Reporte Técnico</h1>
             </div>
-            <div style="padding: 30px; color: #333333; line-height: 1.6;">
-                <p>Estimados <strong>{cliente}</strong>,</p>
-                <p>Adjuntamos el informe técnico de los servicios realizados hoy.</p>
-                <div style="background-color: #f8f9fa; border-left: 4px solid {color_brand}; padding: 15px; margin: 20px 0;">
-                    <div><strong>Fecha:</strong> {fecha_hoy}</div>
-                    <div><strong>Técnico:</strong> {tecnico}</div>
-                    <div><strong>Estado:</strong> Finalizado</div>
+            <div class="content">
+                <p class="greeting">Estimados <strong>{cliente}</strong>,</p>
+                <p>Se ha completado una visita técnica en sus instalaciones. Adjunto a este correo encontrará el informe detallado con las actividades realizadas, evidencias y conformidad del servicio.</p>
+                
+                <div class="info-card">
+                    <div class="info-row">
+                        <span class="info-label">Fecha del Servicio</span>
+                        <span class="info-value">{fecha_hoy}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Técnico Responsable</span>
+                        <span class="info-value">{tecnico}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Estado</span>
+                        <span class="info-value" style="color: #27ae60;">Finalizado con Éxito</span>
+                    </div>
                 </div>
-                <p>El PDF adjunto contiene el detalle completo y las firmas.</p>
-                <p style="margin-top: 30px;">Atentamente,<br><strong>Equipo Tecnocomp</strong></p>
+
+                <p style="text-align: center; font-size: 14px; color: #7f8c8d;">
+                    El documento PDF adjunto contiene el detalle completo.
+                </p>
+                
+                <!-- Botón visual decorativo, el archivo está adjunto -->
+                <div style="text-align:center; margin-top:20px;">
+                    <span style="background-color: {color_brand}; color: white; padding: 10px 20px; border-radius: 20px; font-size: 14px; font-weight: bold;">
+                        📎 Revisar PDF Adjunto
+                    </span>
+                </div>
+
+                <p style="margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px;">
+                    Atentamente,<br>
+                    <strong>Soporte Tecnocomp</strong>
+                </p>
             </div>
-            <div style="background-color: #eeeeee; padding: 10px; text-align: center; font-size: 12px; color: #777;">
-                &copy; {datetime.datetime.now().year} Tecnocomp Computación Ltda.
+            <div class="footer">
+                <p>&copy; {datetime.datetime.now().year} Tecnocomp Computación Ltda.</p>
+                <p>Este es un mensaje automático, por favor no responder a esta dirección.</p>
+                <p>La información contenida en este mensaje es confidencial.</p>
             </div>
         </div>
     </body>
     </html>
     """
 
-    # 4. Payload para Graph API
-    email_url = f"https://graph.microsoft.com/v1.0/users/{config.GRAPH_USER_EMAIL}/sendMail"
-    
     email_data = {
         "message": {
-            "subject": f"Informe de Visita Técnica - {cliente} [{fecha_hoy}]",
-            "body": {
-                "contentType": "HTML",
-                "content": html_body
-            },
-            "toRecipients": [
-                {
-                    "emailAddress": {
-                        "address": destinatario
-                    }
-                }
-            ],
-            "attachments": [
-                {
-                    "@odata.type": "#microsoft.graph.fileAttachment",
-                    "name": nombre_pdf,
-                    "contentType": "application/pdf",
-                    "contentBytes": pdf_content
-                }
-            ]
+            "subject": f"📍 Reporte de Visita - {cliente} - {fecha_hoy}",
+            "body": {"contentType": "HTML", "content": html_body},
+            "toRecipients": [{"emailAddress": {"address": destinatario}}],
+            "attachments": [{
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                "name": os.path.basename(ruta_pdf),
+                "contentType": "application/pdf",
+                "contentBytes": pdf_content
+            }]
         },
         "saveToSentItems": "true"
     }
 
-    headers = {
-        'Authorization': f'Bearer {access_token}',
-        'Content-Type': 'application/json'
-    }
-
     try:
-        response = requests.post(email_url, headers=headers, json=email_data)
-        if response.status_code == 202:
-            return True, f"Enviado a {destinatario} (Oficial)"
-        else:
-            # Intentar leer error
-            try: err = response.json()
-            except: err = response.text
-            return False, f"Error Graph {response.status_code}: {err}"
+        r = requests.post(
+            f"https://graph.microsoft.com/v1.0/users/{config.GRAPH_USER_EMAIL}/sendMail",
+            headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+            json=email_data
+        )
+        if r.status_code == 202: return True, "Correo enviado (Oficial)"
+        return False, f"Error Graph Email: {r.text}"
     except Exception as e:
         return False, f"Error envío: {e}"
 
@@ -133,16 +228,9 @@ def guardar_firma_img(trazos, nombre_archivo="firma_temp.png"):
     if not trazos: return None
     temp_dir = tempfile.gettempdir()
     path = os.path.join(temp_dir, nombre_archivo)
-    
-    # Crear imagen blanca
     img = Image.new("RGB", (400, 200), "white")
     draw = ImageDraw.Draw(img)
-    
     for t in trazos:
-        if len(t) > 1:
-            draw.line(t, fill="black", width=3)
-        elif len(t) == 1:
-            draw.point(t[0], fill="black")
-            
-    img.save(path)
-    return path
+        if len(t) > 1: draw.line(t, fill="black", width=3)
+        elif len(t) == 1: draw.point(t[0], fill="black")
+    img.save(path); return path

@@ -10,7 +10,6 @@ import utils
 import pdf_generator
 
 def main(page: f.Page):
-    # Configuración de página
     page.title = "Tecnocomp Mobile"
     page.window_width = 400
     page.window_height = 850
@@ -123,7 +122,6 @@ def main(page: f.Page):
             
             fp = f.FilePicker(on_result=lambda e: actualizar_fotos_usuario(e))
             page.overlay.append(fp)
-            # ELIMINADO: save_file_picker (ya no se usa)
 
             def actualizar_fotos_usuario(e):
                 if e.files and usuario_actual_foto[0] is not None:
@@ -249,7 +247,7 @@ def main(page: f.Page):
                 dlg_firma = f.AlertDialog(title=f.Text("Firma Global (Opcional)"), content=f.Container(content=f.Stack([canvas, gd]), border=f.border.all(1, "grey"), border_radius=10, width=300, height=200, bgcolor="white"), actions=[f.TextButton("Limpiar", on_click=lambda e: [datos_firma["trazos"].clear(), canvas.shapes.clear(), canvas.update()]), f.ElevatedButton("Finalizar", on_click=confirmar_click, bgcolor=config.COLOR_PRIMARIO, color="white")])
                 page.open(dlg_firma)
 
-            # ELIMINADO: btn_ver (Guardar PDF)
+            # Botones post-guardado (ELIMINADO: btn_ver)
             btn_correo = f.ElevatedButton("Enviar Correo", icon=f.Icons.EMAIL, visible=False, bgcolor=config.COLOR_SECUNDARIO, color="white")
             
             # --- FEEDBACK VISUAL ---
@@ -259,7 +257,6 @@ def main(page: f.Page):
                 if not dd_cli.value or not dd_tec.value:
                     page.open(f.SnackBar(f.Text("Faltan datos clave"), bgcolor="red")); return
                 
-                # 1. BLOQUEAR UI Y MOSTRAR CARGA
                 btn_main_guardar.disabled = True
                 btn_main_guardar.text = "PROCESANDO..."
                 btn_main_guardar.content = f.Row([progress_ring, f.Text("PROCESANDO...")], alignment="center")
@@ -267,7 +264,6 @@ def main(page: f.Page):
                 page.update()
 
                 try:
-                    # 2. GENERAR DATOS
                     datos_finales = []; todas_fotos = [] 
                     for u in state_usuarios:
                         fotos = u["lista_fotos"]; todas_fotos.extend(fotos)
@@ -277,7 +273,6 @@ def main(page: f.Page):
                     pdf_path = pdf_generator.generar_pdf(dd_cli.value, dd_tec.value, txt_obs.value, firma, datos_finales)
                     ultimo_pdf_generado.value = pdf_path
                     
-                    # 3. INTENTAR ENVIAR CORREO (MICROSOFT GRAPH)
                     estado_envio = 0
                     msg_envio = "Guardado localmente. Pendiente de envío."
                     color_snack = "orange"
@@ -289,7 +284,7 @@ def main(page: f.Page):
                         envio_ok, msg_graph = utils.enviar_correo_graph(pdf_path, dd_cli.value, dd_tec.value)
                         
                         # --- COMENTADO PORQUE NO ESTÁ APROBADO AÚN ---
-                        # sharepoint_ok, msg_sharepoint = utils.subir_archivo_sharepoint(pdf_path, dd_cli.value)
+                        sharepoint_ok, msg_sharepoint = utils.subir_archivo_sharepoint(pdf_path, dd_cli.value)
                         msg_sharepoint = "" 
 
                         if envio_ok:
@@ -301,7 +296,6 @@ def main(page: f.Page):
                     except Exception as e_mail:
                         print(f"Error Graph: {e_mail}")
                     
-                    # 4. GUARDAR EN DB
                     database.guardar_reporte(utils.obtener_hora_chile().strftime('%Y-%m-%d %H:%M:%S'), dd_cli.value, dd_tec.value, txt_obs.value, json.dumps(todas_fotos), pdf_path, json_usr, estado_envio)
                     
                     page.open(f.SnackBar(f.Text(msg_envio), bgcolor=color_snack))
@@ -315,7 +309,6 @@ def main(page: f.Page):
                 except Exception as ex:
                     page.open(f.SnackBar(f.Text(f"Error Crítico: {ex}"), bgcolor="red"))
                 
-                # 5. RESTAURAR UI
                 progress_ring.visible = False
                 btn_main_guardar.content = None
                 btn_main_guardar.text = "FINALIZAR VISITA"
@@ -324,7 +317,6 @@ def main(page: f.Page):
 
             btn_main_guardar = f.ElevatedButton("FINALIZAR VISITA", on_click=lambda e: abrir_dialogo_firma(e), height=60, style=f.ButtonStyle(bgcolor=config.COLOR_PRIMARIO, color="white", shape=f.RoundedRectangleBorder(radius=15)))
             
-            # ELIMINADO: btn_ver en la fila de botones
             page.views.append(f.View("/nueva_visita", controls=[
                 f.AppBar(title=f.Text("Nueva Visita", color=c["texto"]), bgcolor=c["superficie"], color=config.COLOR_PRIMARIO, elevation=0),
                 f.Container(content=f.Column([
@@ -359,7 +351,7 @@ def main(page: f.Page):
                         ok, msg = utils.enviar_correo_graph(p_pdf, p_cli, p_tec)
                         
                         # Comentado SharePoint
-                        # utils.subir_archivo_sharepoint(p_pdf, p_cli)
+                        utils.subir_archivo_sharepoint(p_pdf, p_cli)
 
                         if ok:
                             database.actualizar_estado_email(p_id, 1)

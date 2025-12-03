@@ -1,4 +1,3 @@
-# pdf_generator.py
 import os
 import tempfile
 from fpdf import FPDF
@@ -8,17 +7,25 @@ import utils
 
 class PDFReporte(FPDF):
     def header(self):
-        # Fondo cabecera
-        self.set_fill_color(5, 131, 242) # Azul similar a COLOR_PRIMARIO
+        self.set_fill_color(5, 131, 242)
         self.rect(0, 0, 210, 42, 'F')
         
-        # Logo
-        logo = "logo.png" if os.path.exists("logo.png") else ("logo2.png" if os.path.exists("logo2.png") else None)
-        if logo:
-            try: self.image(logo, x=10, y=6, w=50) 
-            except: pass
+        # --- CAMBIO: Buscar en carpeta assets ---
+        # Verificamos si existe assets/logo.png o assets/logo2.png
+        ruta_logo1 = os.path.join("assets", "logo.png")
+        ruta_logo2 = os.path.join("assets", "logo2.png")
+        
+        logo_a_usar = None
+        if os.path.exists(ruta_logo1):
+            logo_a_usar = ruta_logo1
+        elif os.path.exists(ruta_logo2):
+            logo_a_usar = ruta_logo2
             
-        # Título
+        if logo_a_usar:
+            try: self.image(logo_a_usar, x=10, y=6, w=50) 
+            except: pass
+        # ----------------------------------------
+            
         self.set_font('Helvetica', 'B', 16)
         self.set_text_color(255, 255, 255)
         self.set_xy(140, 15)
@@ -36,11 +43,9 @@ def generar_pdf(cliente, tecnico, obs, path_firma, datos_usuarios):
     pdf.alias_nb_pages()
     pdf.add_page()
     
-    # Datos generales
     pdf.set_fill_color(240, 240, 240)
     pdf.rect(10, 48, 190, 28, 'F')
     
-    # Helper para filas de datos
     def add_data_row(label, value):
         pdf.set_x(15)
         pdf.set_font("Helvetica", "B", 10)
@@ -88,7 +93,6 @@ def generar_pdf(cliente, tecnico, obs, path_firma, datos_usuarios):
         texto = f"Trabajo: {u['trabajo']}" if u['atendido'] else f"Motivo: {u['motivo']}"
         pdf.multi_cell(0, 5, texto, align='L')
         
-        # Fotos
         if u['fotos'] and u['atendido']:
             pdf.ln(2)
             pdf.set_font("Helvetica", "B", 9)
@@ -110,7 +114,6 @@ def generar_pdf(cliente, tecnico, obs, path_firma, datos_usuarios):
                     except: pass
             pdf.set_y(y_c + 40)
         
-        # Firma usuario
         firma_usr = u.get('firma')
         if firma_usr and os.path.exists(firma_usr):
             if pdf.get_y() + 30 > 270: pdf.add_page()
@@ -129,7 +132,6 @@ def generar_pdf(cliente, tecnico, obs, path_firma, datos_usuarios):
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(5)
 
-    # Observaciones y firma global
     if pdf.get_y() > 220: pdf.add_page()
     pdf.set_font("Helvetica", "B", 12)
     pdf.set_text_color(5, 131, 242)

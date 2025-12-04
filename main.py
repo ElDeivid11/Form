@@ -8,15 +8,14 @@ import config
 import database
 import utils
 import pdf_generator
+import tempfile
 
 # --- IMPORTACIÓN SEGURA DE PLYER ---
-# Esto evita que la app se rompa en Windows donde no existe cámara nativa
 camera = None
 try:
     from plyer import camera
-except Exception as e:
-    print(f"Advertencia: Plyer no está disponible o no soporta esta plataforma ({e}). Se usará modo compatibilidad.")
-    camera = None
+except Exception:
+    pass
 
 def main(page: f.Page):
     page.title = "Tecnocomp Mobile"
@@ -27,7 +26,6 @@ def main(page: f.Page):
     page.fonts = {"Poppins": "https://fonts.gstatic.com/s/poppins/v20/pxiByp8kv8JHgFVrLEj6Z1xlFd2JQEk.woff2"}
     page.theme = f.Theme(font_family=config.FONT_FAMILY, use_material3=True)
     
-    # --- ESTADO GLOBAL ---
     app_state = {
         "tema": "light",
         "id_editar": None
@@ -36,6 +34,24 @@ def main(page: f.Page):
     page.theme_mode = f.ThemeMode.LIGHT
     page.bgcolor = config.COLORES["light"]["fondo"]
     ultimo_pdf_generado = f.Text("", visible=False)
+
+    # --- SOLICITUD DE PERMISOS (CRÍTICO PARA ANDROID) ---
+    def solicitar_permisos_android():
+        try:
+            from android.permissions import request_permissions, Permission
+            # Pide permisos al sistema operativo
+            request_permissions([
+                Permission.CAMERA, 
+                Permission.WRITE_EXTERNAL_STORAGE, 
+                Permission.READ_EXTERNAL_STORAGE
+            ])
+        except ImportError:
+            pass # No estamos en Android, no pasa nada
+        except Exception as e:
+            print(f"Error pidiendo permisos: {e}")
+
+    # Ejecutar al inicio
+    solicitar_permisos_android()
 
     database.inicializar_db()
 
@@ -135,7 +151,6 @@ def main(page: f.Page):
         page.views.clear()
         c = config.COLORES[app_state["tema"]]
         
-        # Helper para opacidad (Arregla 'with_opacity')
         def obtener_color_opacidad(color_hex, opacity):
             if not color_hex: return None
             color_hex = color_hex.lstrip('#')
@@ -159,7 +174,7 @@ def main(page: f.Page):
                 ], horizontal_alignment="center", scroll="auto"), padding=f.padding.symmetric(horizontal=25, vertical=10), expand=True, alignment=f.alignment.top_center)
             ], bgcolor=c["fondo"], padding=0))
 
-        # --- METRICAS PROFESIONALES ---
+        # --- METRICAS ---
         if page.route == "/metricas":
             data_cli = database.obtener_datos_clientes()
             data_tec = database.obtener_datos_tecnicos()
@@ -242,7 +257,7 @@ def main(page: f.Page):
                     u["control_galeria"].update()
                     page.open(f.SnackBar(f.Text(f"Fotos agregadas"), bgcolor="green"))
 
-            # --- INTEGRACIÓN CÁMARA PLYER ---
+            # --- INTEGRACIÓN CÁMARA PLYER (CORREGIDA) ---
             def on_camera_complete(path):
                 if usuario_actual_foto[0] is not None:
                     if os.path.exists(path):
@@ -258,12 +273,12 @@ def main(page: f.Page):
                 usuario_actual_foto[0] = idx
                 try:
                     if camera:
-                        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                        filename = os.path.join(os.getcwd(), f"foto_{timestamp}.jpg")
+                        # Usamos una ruta segura temporal
+                        filename = os.path.join(tempfile.gettempdir(), f"foto_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg")
                         camera.take_picture(filename, on_complete=on_camera_complete)
-                        page.open(f.SnackBar(f.Text("Abriendo cámara nativa..."), bgcolor="blue"))
+                        page.open(f.SnackBar(f.Text("Abriendo cámara..."), bgcolor="blue"))
                     else:
-                        page.open(f.SnackBar(f.Text("Cámara nativa no disponible en Windows. Usa 'Galería'."), bgcolor="orange"))
+                        page.open(f.SnackBar(f.Text("Cámara no disponible en PC. Usa 'Galería'."), bgcolor="orange"))
                     page.update()
                 except Exception as ex:
                     page.open(f.SnackBar(f.Text(f"Error cámara: {ex}"), bgcolor="red"))
@@ -412,7 +427,6 @@ def main(page: f.Page):
                     
                     btn_firma_ind = f.ElevatedButton("Firmar", icon=f.Icons.DRAW, bgcolor=config.COLOR_ACCENTO, color="white", on_click=abrir_firma_ind)
                     
-                    # Logica de Fotos (Galeria / Cámara Nativa)
                     def pick_evidence(e, idx=i): usuario_actual_foto[0] = idx; fp.pick_files(allow_multiple=True, file_type=f.FilePickerFileType.ANY)
                     def click_camara(e, idx=i): abrir_camara_nativa(e, idx)
 
@@ -471,25 +485,19 @@ def main(page: f.Page):
                     json_usr = json.dumps(datos_finales)
                     firma = utils.guardar_firma_img(datos_firma["trazos"]) if datos_firma["trazos"] else None
                     
-                    # Generar PDF
                     pdf_path = pdf_generator.generar_pdf(dd_cli.value, dd_tec.value, txt_obs.value, firma, datos_finales)
                     ultimo_pdf_generado.value = pdf_path
                     
-                    # Guardar en DB (SIN ENVIAR CORREO)
                     fecha_actual = utils.obtener_hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                     
                     if app_state["id_editar"]:
-                        # UPDATE
-                        database.actualizar_reporte(app_state["id_editar"], fecha_actual, dd_cli.value, dd_tec.value, txt_obs.value, json.dumps(todas_fotos), pdf_path, json_usr, 0) # 0 = Pendiente
+                        database.actualizar_reporte(app_state["id_editar"], fecha_actual, dd_cli.value, dd_tec.value, txt_obs.value, json.dumps(todas_fotos), pdf_path, json_usr, 0)
                         msg_exito = "Reporte actualizado. Pendiente de envío."
                     else:
-                        # INSERT
                         database.guardar_reporte(fecha_actual, dd_cli.value, dd_tec.value, txt_obs.value, json.dumps(todas_fotos), pdf_path, json_usr, 0)
                         msg_exito = "Guardado localmente. Pendiente de envío."
 
                     page.open(f.SnackBar(f.Text(msg_exito), bgcolor="green"))
-                    
-                    # Redirigir al historial tras guardar
                     page.go("/historial")
 
                 except Exception as ex:
@@ -504,7 +512,6 @@ def main(page: f.Page):
             txt_btn_main = "GUARDAR CAMBIOS" if app_state["id_editar"] else "FINALIZAR VISITA"
             btn_main_guardar = f.ElevatedButton(txt_btn_main, on_click=lambda e: abrir_dialogo_firma(e), height=60, style=f.ButtonStyle(bgcolor=config.COLOR_PRIMARIO, color="white", shape=f.RoundedRectangleBorder(radius=15)))
             
-            # --- CARGAR DATOS SI ES EDICIÓN ---
             titulo_vista = "Nueva Visita"
             if app_state["id_editar"]:
                 titulo_vista = "Editar Visita"
@@ -514,7 +521,6 @@ def main(page: f.Page):
                     dd_cli.value = cli_db
                     dd_tec.value = tec_db
                     txt_obs.value = obs_db
-                    
                     try:
                         detalles_json = json.loads(detalles_db)
                         cargar_usuarios(cli_db, detalles_json, actualizar_vista=False)
@@ -522,13 +528,7 @@ def main(page: f.Page):
                         cargar_usuarios(cli_db, actualizar_vista=False)
 
             page.views.append(f.View("/nueva_visita", controls=[
-                f.AppBar(
-                    leading=f.IconButton(icon=f.Icons.ARROW_BACK, icon_color=config.COLOR_PRIMARIO, on_click=lambda _: page.go("/")),
-                    title=f.Text(titulo_vista, color=c["texto"]), 
-                    bgcolor=c["superficie"], 
-                    color=config.COLOR_PRIMARIO, 
-                    elevation=0
-                ),
+                f.AppBar(leading=f.IconButton(icon=f.Icons.ARROW_BACK, icon_color=config.COLOR_PRIMARIO, on_click=lambda _: page.go("/")), title=f.Text(titulo_vista, color=c["texto"]), bgcolor=c["superficie"], color=config.COLOR_PRIMARIO, elevation=0),
                 f.Container(content=f.Column([
                     crear_seccion(c, "Información", f.Column([f.Row([dd_cli, btn_add_cli]), f.Row([dd_tec, btn_add_tec])], spacing=15)),
                     crear_seccion(c, "Bitácora", col_usuarios),
@@ -545,11 +545,9 @@ def main(page: f.Page):
                 if not pendientes:
                     page.open(f.SnackBar(f.Text("No hay correos pendientes"), bgcolor="grey"))
                     return
-                
                 enviados = 0
                 total = len(pendientes)
                 page.open(f.SnackBar(f.Text(f"Sincronizando {total} reportes..."), bgcolor="blue"))
-                
                 for p_id, p_pdf, p_cli, p_tec in pendientes:
                     try:
                         email_dest = database.obtener_correo_cliente(p_cli)
@@ -560,7 +558,6 @@ def main(page: f.Page):
                             database.actualizar_estado_email(p_id, 1)
                             enviados += 1
                     except: pass
-                
                 page.open(f.SnackBar(f.Text(f"Sincronización completa: {enviados}/{total} enviados"), bgcolor="green" if enviados==total else "orange"))
                 page.go("/dummy"); page.go("/historial")
 
@@ -606,46 +603,19 @@ def main(page: f.Page):
                         
                         dlg = f.AlertDialog()
                         btn_reenviar = f.TextButton("Enviar Email", icon=f.Icons.SEND, on_click=lambda e: accion_reenviar(e, row, _id, _cl, _te, _pd, dlg))
-                        
                         dlg.content = f.Container(content=f.Column([header_modal, f.Text(f"Tec: {_te}", color=c["texto"], weight="bold"), f.Divider(), f.Column(usuarios_ui, scroll="auto", expand=True), f.Text(f"Nota: {_ob}", italic=True, color=c["texto_sec"])], scroll="auto"), width=600, height=700)
                         dlg.actions = [f.TextButton("Cerrar", on_click=lambda e: page.close(dlg)), btn_reenviar]
                         dlg.inset_padding = 10
                         page.open(dlg)
                     
-                    lista_items.append(f.Container(content=f.Column([
-                        f.Row([
-                            f.Row([f.Container(content=f.Icon(f.Icons.DESCRIPTION, color=config.COLOR_BLANCO), bgcolor=config.COLOR_PRIMARIO if ex else "grey", padding=10, border_radius=12), 
-                                   f.Column([f.Text(cli, weight="bold", color=c["texto"]), f.Text(fecha, size=12, color=c["texto_sec"])], spacing=0)]), 
-                            icon_env
-                        ], alignment="spaceBetween"), 
-                        f.Divider(color=c["borde"]), 
-                        f.Row([
-                            f.Text(f"Tec: {tec}", color=c["texto"]), 
-                            f.Row([
-                                f.IconButton(icon=f.Icons.EDIT, icon_color="orange", tooltip="Editar", on_click=editar_click),
-                                f.IconButton(icon=f.Icons.VISIBILITY, icon_color=config.COLOR_PRIMARIO, tooltip="Ver detalle", on_click=ver_detalle_modal)
-                            ])
-                        ], alignment="spaceBetween")
-                    ]), padding=15, bgcolor=c["card_bg"], border_radius=12, shadow=f.BoxShadow(blur_radius=5, color=c["sombra"]), margin=f.margin.only(bottom=10)))
+                    lista_items.append(f.Container(content=f.Column([f.Row([f.Row([f.Container(content=f.Icon(f.Icons.DESCRIPTION, color=config.COLOR_BLANCO), bgcolor=config.COLOR_PRIMARIO if ex else "grey", padding=10, border_radius=12), f.Column([f.Text(cli, weight="bold", color=c["texto"]), f.Text(fecha, size=12, color=c["texto_sec"])], spacing=0)]), icon_env], alignment="spaceBetween"), f.Divider(color=c["borde"]), f.Row([f.Text(f"Tec: {tec}", color=c["texto"]), f.Row([f.IconButton(icon=f.Icons.EDIT, icon_color="orange", tooltip="Editar", on_click=editar_click), f.IconButton(icon=f.Icons.VISIBILITY, icon_color=config.COLOR_PRIMARIO, tooltip="Ver detalle", on_click=ver_detalle_modal)])], alignment="spaceBetween")]), padding=15, bgcolor=c["card_bg"], border_radius=12, shadow=f.BoxShadow(blur_radius=5, color=c["sombra"]), margin=f.margin.only(bottom=10)))
             
-            page.views.append(f.View("/historial", controls=[
-                f.AppBar(
-                    leading=f.IconButton(icon=f.Icons.ARROW_BACK, icon_color=config.COLOR_PRIMARIO, on_click=lambda _: page.go("/")),
-                    title=f.Text("Historial", color=c["texto"]), 
-                    bgcolor=c["superficie"], 
-                    color=config.COLOR_PRIMARIO, 
-                    elevation=0, 
-                    actions=[btn_sync]
-                ),
-                f.Container(content=f.ListView(controls=lista_items, spacing=5, padding=20), expand=True)
-            ], bgcolor=c["fondo"]))
+            page.views.append(f.View("/historial", controls=[f.AppBar(leading=f.IconButton(icon=f.Icons.ARROW_BACK, icon_color=config.COLOR_PRIMARIO, on_click=lambda _: page.go("/")), title=f.Text("Historial", color=c["texto"]), bgcolor=c["superficie"], color=config.COLOR_PRIMARIO, elevation=0, actions=[btn_sync]), f.Container(content=f.ListView(controls=lista_items, spacing=5, padding=20), expand=True)], bgcolor=c["fondo"]))
         
         page.update()
 
     def view_pop(view):
-        if len(page.views) > 0:
-            page.views.pop()
-        
+        if len(page.views) > 0: page.views.pop()
         if len(page.views) > 0:
             top_view = page.views[-1]
             page.go(top_view.route)

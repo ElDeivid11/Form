@@ -36,7 +36,8 @@ jobs:
       - name: Install Dependencies
         run: |
           pip install --upgrade pip
-          pip install -r requirements.txt
+          # Agregamos --pre para que encuentre la version 0.25.0.dev que sí existe
+          pip install --pre -r requirements.txt --no-cache-dir --force-reinstall
           pip install plyer pyjnius
           
       - name: Accept Android Licenses

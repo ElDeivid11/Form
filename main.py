@@ -10,17 +10,6 @@ import utils
 import pdf_generator
 import tempfile
 
-# --- IMPORTACIONES NATIVAS (SOLO ANDROID) ---
-# Esto previene errores en Windows y prepara el terreno para el APK
-platform_android = False
-try:
-    from jnius import autoclass
-    from plyer import camera
-    from android.permissions import request_permissions, Permission
-    platform_android = True
-except Exception:
-    camera = None
-
 def main(page: f.Page):
     page.title = "Tecnocomp Mobile"
     page.window_width = 400
@@ -30,7 +19,6 @@ def main(page: f.Page):
     page.fonts = {"Poppins": "https://fonts.gstatic.com/s/poppins/v20/pxiByp8kv8JHgFVrLEj6Z1xlFd2JQEk.woff2"}
     page.theme = f.Theme(font_family=config.FONT_FAMILY, use_material3=True)
     
-    # --- ESTADO GLOBAL ---
     app_state = {
         "tema": "light",
         "id_editar": None
@@ -40,69 +28,7 @@ def main(page: f.Page):
     page.bgcolor = config.COLORES["light"]["fondo"]
     ultimo_pdf_generado = f.Text("", visible=False)
 
-    # --- CONFIGURACIÓN TÉCNICA ANDROID ---
-    def configurar_android():
-        if not platform_android: return
-        try:
-            # 1. Solicitar Permisos
-            request_permissions([
-                Permission.CAMERA, 
-                Permission.WRITE_EXTERNAL_STORAGE, 
-                Permission.READ_EXTERNAL_STORAGE
-            ])
-            
-            # 2. HACK: Desactivar FileUriExposedException
-            # Esto evita que la app se cierre al intentar abrir la cámara con una ruta de archivo
-            StrictMode = autoclass('android.os.StrictMode')
-            try:
-                # Método antiguo (Android 7-9)
-                StrictMode.disableDeathOnFileUriExposure()
-            except Exception:
-                # Método moderno (Android 10+)
-                Builder = autoclass('android.os.StrictMode$VmPolicy$Builder')
-                policy = Builder().detectFileUriExposure().penaltyLog().build()
-                StrictMode.setVmPolicy(policy)
-                
-        except Exception as e:
-            print(f"Error configurando Android: {e}")
-
-    # Ejecutar configuración al inicio
-    configurar_android()
     database.inicializar_db()
-
-    # --- SISTEMA DE CÁMARA ROBUSTO ---
-    def obtener_ruta_foto_android():
-        """Genera una ruta pública segura para la cámara en Android"""
-        try:
-            Environment = autoclass('android.os.Environment')
-            # Usar carpeta pública de imágenes (DCIM o Pictures)
-            public_dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).toString()
-            nombre = f"Tecnocomp_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-            ruta_final = os.path.join(public_dir, nombre)
-            return ruta_final
-        except Exception:
-            return "error_path"
-
-    # --- VARIABLES GLOBALES PARA CÁMARA ---
-    usuario_actual_foto = [None] # Referencia mutable
-    state_usuarios = [] # Lista global de usuarios cargados
-
-    def on_camera_complete(path):
-        """Callback que se ejecuta cuando Plyer termina de tomar la foto"""
-        if usuario_actual_foto[0] is not None and os.path.exists(path):
-            u = state_usuarios[usuario_actual_foto[0]]
-            u["lista_fotos"].append(path)
-            
-            # Actualizar interfaz
-            img_widget = f.Container(
-                content=f.Image(src=path, width=60, height=60, fit=f.ImageFit.COVER, border_radius=8),
-                border=f.border.all(1, "grey"), border_radius=8
-            )
-            u["control_galeria"].controls.append(img_widget)
-            u["control_galeria"].update()
-            
-            page.open(f.SnackBar(f.Text("Foto guardada correctamente"), bgcolor="green"))
-            page.update()
 
     def cambiar_tema(e):
         app_state["tema"] = "dark" if app_state["tema"] == "light" else "light"
@@ -196,36 +122,6 @@ def main(page: f.Page):
         )
         page.open(dlg_pass)
 
-    # --- FILE PICKER (GALERÍA) ---
-    def actualizar_fotos_picker(e):
-        if e.files and usuario_actual_foto[0] is not None:
-            u = state_usuarios[usuario_actual_foto[0]]
-            for file in e.files: u["lista_fotos"].append(file.path)
-            u["control_galeria"].controls.clear()
-            for p in u["lista_fotos"]: 
-                u["control_galeria"].controls.append(f.Container(content=f.Image(src=p, width=60, height=60, fit=f.ImageFit.COVER, border_radius=8), border=f.border.all(1, "grey"), border_radius=8))
-            u["control_galeria"].update()
-            page.open(f.SnackBar(f.Text(f"Fotos importadas"), bgcolor="green"))
-
-    fp = f.FilePicker(on_result=actualizar_fotos_picker)
-    page.overlay.append(fp)
-
-    def abrir_camara_nativa(e, idx):
-        usuario_actual_foto[0] = idx
-        
-        # Opción 1: Plyer (Cámara directa) - Solo funciona en Android
-        if platform_android and camera:
-            try:
-                ruta = obtener_ruta_foto_android()
-                camera.take_picture(ruta, on_complete=on_camera_complete)
-                page.open(f.SnackBar(f.Text("Iniciando cámara..."), bgcolor="blue"))
-            except Exception as ex:
-                page.open(f.SnackBar(f.Text(f"Error cámara nativa: {ex}"), bgcolor="red"))
-        
-        # Opción 2: FilePicker (Galería/PC) - Fallback
-        else:
-            fp.pick_files(allow_multiple=True, file_type=f.FilePickerFileType.IMAGE)
-
     def route_change(route):
         page.views.clear()
         c = config.COLORES[app_state["tema"]]
@@ -253,7 +149,7 @@ def main(page: f.Page):
                 ], horizontal_alignment="center", scroll="auto"), padding=f.padding.symmetric(horizontal=25, vertical=10), expand=True, alignment=f.alignment.top_center)
             ], bgcolor=c["fondo"], padding=0))
 
-        # --- METRICAS PROFESIONALES ---
+        # --- METRICAS ---
         if page.route == "/metricas":
             data_cli = database.obtener_datos_clientes()
             data_tec = database.obtener_datos_tecnicos()
@@ -320,9 +216,24 @@ def main(page: f.Page):
         if page.route == "/nueva_visita":
             datos_firma = {"trazos": []}
             datos_firma_individual = {"trazos": []}
-            # IMPORTANTE: Reiniciamos la lista de usuarios al entrar para no acumular basura de visitas anteriores
-            del state_usuarios[:] 
-            usuario_actual_foto[0] = None
+            state_usuarios = []
+            usuario_actual_foto = [None] 
+            
+            # --- FILE PICKER UNIFICADO (FOTOS) ---
+            # En Android, al pedir FileType.IMAGE, el sistema muestra "Cámara" o "Galería"
+            # Esto evita el uso de librerías externas que causan problemas de permisos
+            fp = f.FilePicker(on_result=lambda e: actualizar_fotos_usuario(e))
+            page.overlay.append(fp)
+
+            def actualizar_fotos_usuario(e):
+                if e.files and usuario_actual_foto[0] is not None:
+                    u = state_usuarios[usuario_actual_foto[0]]
+                    for file in e.files: u["lista_fotos"].append(file.path)
+                    u["control_galeria"].controls.clear()
+                    for p in u["lista_fotos"]: 
+                        u["control_galeria"].controls.append(f.Container(content=f.Image(src=p, width=60, height=60, fit=f.ImageFit.COVER, border_radius=8), border=f.border.all(1, c["borde"]), border_radius=8, shadow=f.BoxShadow(blur_radius=5, color=c["sombra"])))
+                    u["control_galeria"].update()
+                    page.open(f.SnackBar(f.Text(f"Fotos agregadas"), bgcolor="green"))
 
             lista_tecnicos = database.obtener_tecnicos()
             dd_tec = f.Dropdown(label="Técnico Responsable", options=[f.dropdown.Option(t) for t in lista_tecnicos], filled=True, bgcolor=c["input_bg"], color=c["texto"], border_radius=12, border_color="transparent", text_size=14, expand=True)
@@ -374,7 +285,7 @@ def main(page: f.Page):
             col_usuarios = f.Column(spacing=15)
             
             def cargar_usuarios(cliente, datos_edicion=None, actualizar_vista=True):
-                col_usuarios.controls.clear(); del state_usuarios[:]
+                col_usuarios.controls.clear(); state_usuarios.clear()
                 if not cliente:
                     if actualizar_vista: col_usuarios.update()
                     return
@@ -467,18 +378,15 @@ def main(page: f.Page):
                     
                     btn_firma_ind = f.ElevatedButton("Firmar", icon=f.Icons.DRAW, bgcolor=config.COLOR_ACCENTO, color="white", on_click=abrir_firma_ind)
                     
-                    # --- BOTONES DE EVIDENCIA ---
-                    # 1. Galería (FilePicker, funciona siempre)
-                    def pick_galeria(e, idx=i): 
+                    # --- CONFIGURACIÓN DE BOTONES DE EVIDENCIA ---
+                    # Ambos botones usan FilePicker para evitar problemas de seguridad en Android.
+                    # El usuario elegirá "Cámara" o "Galería" dentro del selector nativo del celular.
+                    def pick_evidence(e, idx=i): 
                         usuario_actual_foto[0] = idx
                         fp.pick_files(allow_multiple=True, file_type=f.FilePickerFileType.IMAGE)
-                    
-                    # 2. Cámara (Plyer + Hack StrictMode)
-                    def pick_camara(e, idx=i): 
-                        abrir_camara_nativa(e, idx)
 
-                    btn_galeria = f.IconButton(icon=f.Icons.PHOTO_LIBRARY, icon_color=config.COLOR_ACCENTO, tooltip="Galería", on_click=pick_galeria)
-                    btn_camara = f.IconButton(icon=f.Icons.CAMERA_ALT, icon_color=config.COLOR_ACCENTO, tooltip="Cámara", on_click=pick_camara)
+                    btn_galeria = f.IconButton(icon=f.Icons.ADD_PHOTO_ALTERNATE, icon_color=config.COLOR_ACCENTO, tooltip="Agregar Fotos (Galería/Cámara)", on_click=pick_evidence)
+                    btn_camara = f.IconButton(icon=f.Icons.CAMERA_ALT, icon_color=config.COLOR_ACCENTO, tooltip="Agregar Fotos (Galería/Cámara)", on_click=pick_evidence)
                     
                     cont_detalles = f.Column([
                         f.Divider(color=c["borde"]), 
@@ -645,7 +553,7 @@ def main(page: f.Page):
                                     if u.get('fotos'):
                                         for fot in u['fotos']: fotos_ui.controls.append(f.Image(src=fot, width=100, height=100, fit="cover", border_radius=8))
                                     firma_ui = f.Image(src=u['firma'], width=150) if u.get('firma') else f.Container()
-                                    usuarios_ui.append(f.Container(content=f.Column([f.Text(f"{st} {u['nombre']}", weight="bold", color=c["texto"]), f.Text(desc, size=12, color=c["texto_sec"]), fotos_ui, f.Text("Firma:", size=10) if u.get('firma') else f.Container(), firma_ui, f.Divider()]), padding=10, border=f.border.all(1, "grey300"), border_radius=8, bgcolor=c["input_bg"]))
+                                    usuarios_ui.append(f.Container(content=f.Column([f.Text(f"{st} {u['nombre']}", weight="bold", color=c["texto"]), f.Text(desc, size=12, color=c["texto_sec"]), fotos_ui, f.Text("Firma:", size=10) if u.get('firma') else f.Container(), firma_ui, f.Divider()]), padding=10, border=f.border.all(1, "grey"), border_radius=8))
                             except: pass
                         
                         dlg = f.AlertDialog()
@@ -658,7 +566,7 @@ def main(page: f.Page):
                     lista_items.append(f.Container(content=f.Column([f.Row([f.Row([f.Container(content=f.Icon(f.Icons.DESCRIPTION, color=config.COLOR_BLANCO), bgcolor=config.COLOR_PRIMARIO if ex else "grey", padding=10, border_radius=12), f.Column([f.Text(cli, weight="bold", color=c["texto"]), f.Text(fecha, size=12, color=c["texto_sec"])], spacing=0)]), icon_env], alignment="spaceBetween"), f.Divider(color=c["borde"]), f.Row([f.Text(f"Tec: {tec}", color=c["texto"]), f.Row([f.IconButton(icon=f.Icons.EDIT, icon_color="orange", tooltip="Editar", on_click=editar_click), f.IconButton(icon=f.Icons.VISIBILITY, icon_color=config.COLOR_PRIMARIO, tooltip="Ver detalle", on_click=ver_detalle_modal)])], alignment="spaceBetween")]), padding=15, bgcolor=c["card_bg"], border_radius=12, shadow=f.BoxShadow(blur_radius=5, color=c["sombra"]), margin=f.margin.only(bottom=10)))
             
             page.views.append(f.View("/historial", controls=[f.AppBar(leading=f.IconButton(icon=f.Icons.ARROW_BACK, icon_color=config.COLOR_PRIMARIO, on_click=lambda _: page.go("/")), title=f.Text("Historial", color=c["texto"]), bgcolor=c["superficie"], color=config.COLOR_PRIMARIO, elevation=0, actions=[btn_sync]), f.Container(content=f.ListView(controls=lista_items, spacing=5, padding=20), expand=True)], bgcolor=c["fondo"]))
-        
+
         page.update()
 
     def view_pop(view):

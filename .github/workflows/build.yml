@@ -39,6 +39,9 @@ jobs:
           pip install flet
           # IMPORTANTE: Instalar librerías nativas para la cámara
           pip install plyer pyjnius
+          pip install --upgrade pip
+          # --no-cache-dir fuerza a descargar todo de nuevo desde cero
+          pip install -r requirements.txt --no-cache-dir --force-reinstall
 
       - name: Accept Android Licenses
         run: |

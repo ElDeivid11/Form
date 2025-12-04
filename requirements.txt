@@ -6,4 +6,3 @@ flet-runtime
 requests
 plyer
 pyjnius
-android  # A veces necesaria para ciertos contextos, aunque plyer suele manejarlo

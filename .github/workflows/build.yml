@@ -35,14 +35,10 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install -r requirements.txt
-          pip install flet
-          # IMPORTANTE: Instalar librerías nativas para la cámara
-          pip install plyer pyjnius
           pip install --upgrade pip
-          # --no-cache-dir fuerza a descargar todo de nuevo desde cero
-          pip install -r requirements.txt --no-cache-dir --force-reinstall
-
+          pip install -r requirements.txt
+          pip install plyer pyjnius
+          
       - name: Accept Android Licenses
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || yes | $ANDROID_HOME/tools/bin/sdkmanager --licenses

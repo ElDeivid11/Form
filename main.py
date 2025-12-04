@@ -10,13 +10,6 @@ import utils
 import pdf_generator
 import tempfile
 
-# --- IMPORTACIÓN SEGURA DE PLYER ---
-camera = None
-try:
-    from plyer import camera
-except Exception:
-    pass
-
 def main(page: f.Page):
     page.title = "Tecnocomp Mobile"
     page.window_width = 400
@@ -34,24 +27,6 @@ def main(page: f.Page):
     page.theme_mode = f.ThemeMode.LIGHT
     page.bgcolor = config.COLORES["light"]["fondo"]
     ultimo_pdf_generado = f.Text("", visible=False)
-
-    # --- SOLICITUD DE PERMISOS (CRÍTICO PARA ANDROID) ---
-    def solicitar_permisos_android():
-        try:
-            from android.permissions import request_permissions, Permission
-            # Pide permisos al sistema operativo
-            request_permissions([
-                Permission.CAMERA, 
-                Permission.WRITE_EXTERNAL_STORAGE, 
-                Permission.READ_EXTERNAL_STORAGE
-            ])
-        except ImportError:
-            pass # No estamos en Android, no pasa nada
-        except Exception as e:
-            print(f"Error pidiendo permisos: {e}")
-
-    # Ejecutar al inicio
-    solicitar_permisos_android()
 
     database.inicializar_db()
 
@@ -244,6 +219,8 @@ def main(page: f.Page):
             state_usuarios = []
             usuario_actual_foto = [None] 
             
+            # --- FILE PICKER UNIFICADO (FOTOS) ---
+            # En Android, al pedir FileType.IMAGE, el sistema muestra "Cámara" o "Galería"
             fp = f.FilePicker(on_result=lambda e: actualizar_fotos_usuario(e))
             page.overlay.append(fp)
 
@@ -256,33 +233,6 @@ def main(page: f.Page):
                         u["control_galeria"].controls.append(f.Container(content=f.Image(src=p, width=60, height=60, fit=f.ImageFit.COVER, border_radius=8), border=f.border.all(1, c["borde"]), border_radius=8, shadow=f.BoxShadow(blur_radius=5, color=c["sombra"])))
                     u["control_galeria"].update()
                     page.open(f.SnackBar(f.Text(f"Fotos agregadas"), bgcolor="green"))
-
-            # --- INTEGRACIÓN CÁMARA PLYER (CORREGIDA) ---
-            def on_camera_complete(path):
-                if usuario_actual_foto[0] is not None:
-                    if os.path.exists(path):
-                        u = state_usuarios[usuario_actual_foto[0]]
-                        u["lista_fotos"].append(path)
-                        img_widget = f.Container(content=f.Image(src=path, width=60, height=60, fit=f.ImageFit.COVER, border_radius=8), border=f.border.all(1, c["borde"]), border_radius=8)
-                        u["control_galeria"].controls.append(img_widget)
-                        u["control_galeria"].update()
-                        page.open(f.SnackBar(f.Text("Foto nativa guardada"), bgcolor="green"))
-                        page.update()
-
-            def abrir_camara_nativa(e, idx):
-                usuario_actual_foto[0] = idx
-                try:
-                    if camera:
-                        # Usamos una ruta segura temporal
-                        filename = os.path.join(tempfile.gettempdir(), f"foto_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg")
-                        camera.take_picture(filename, on_complete=on_camera_complete)
-                        page.open(f.SnackBar(f.Text("Abriendo cámara..."), bgcolor="blue"))
-                    else:
-                        page.open(f.SnackBar(f.Text("Cámara no disponible en PC. Usa 'Galería'."), bgcolor="orange"))
-                    page.update()
-                except Exception as ex:
-                    page.open(f.SnackBar(f.Text(f"Error cámara: {ex}"), bgcolor="red"))
-                    page.update()
 
             lista_tecnicos = database.obtener_tecnicos()
             dd_tec = f.Dropdown(label="Técnico Responsable", options=[f.dropdown.Option(t) for t in lista_tecnicos], filled=True, bgcolor=c["input_bg"], color=c["texto"], border_radius=12, border_color="transparent", text_size=14, expand=True)
@@ -427,11 +377,15 @@ def main(page: f.Page):
                     
                     btn_firma_ind = f.ElevatedButton("Firmar", icon=f.Icons.DRAW, bgcolor=config.COLOR_ACCENTO, color="white", on_click=abrir_firma_ind)
                     
-                    def pick_evidence(e, idx=i): usuario_actual_foto[0] = idx; fp.pick_files(allow_multiple=True, file_type=f.FilePickerFileType.ANY)
-                    def click_camara(e, idx=i): abrir_camara_nativa(e, idx)
+                    # --- CONFIGURACIÓN DE BOTONES DE EVIDENCIA ---
+                    # Ambos botones usan FilePicker para evitar problemas de seguridad en Android.
+                    # El usuario elegirá "Cámara" o "Galería" dentro del selector nativo del celular.
+                    def pick_evidence(e, idx=i): 
+                        usuario_actual_foto[0] = idx
+                        fp.pick_files(allow_multiple=True, file_type=f.FilePickerFileType.IMAGE)
 
-                    btn_galeria = f.IconButton(icon=f.Icons.ADD_PHOTO_ALTERNATE, icon_color=config.COLOR_ACCENTO, tooltip="Galería", on_click=pick_evidence)
-                    btn_camara = f.IconButton(icon=f.Icons.CAMERA_ALT, icon_color=config.COLOR_ACCENTO, tooltip="Cámara Nativa", on_click=click_camara)
+                    btn_galeria = f.IconButton(icon=f.Icons.ADD_PHOTO_ALTERNATE, icon_color=config.COLOR_ACCENTO, tooltip="Agregar Fotos (Galería/Cámara)", on_click=pick_evidence)
+                    btn_camara = f.IconButton(icon=f.Icons.CAMERA_ALT, icon_color=config.COLOR_ACCENTO, tooltip="Agregar Fotos (Galería/Cámara)", on_click=pick_evidence)
                     
                     cont_detalles = f.Column([
                         f.Divider(color=c["borde"]), 

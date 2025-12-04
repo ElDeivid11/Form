@@ -36,7 +36,8 @@ jobs:
       - name: Install Dependencies
         run: |
           pip install --upgrade pip
-          pip install -r requirements.txt
+          # Agregamos --pre para que encuentre la version 0.25.0.dev que sí existe
+          pip install --pre -r requirements.txt --no-cache-dir --force-reinstall
           pip install plyer pyjnius
           
       - name: Accept Android Licenses
@@ -45,10 +46,8 @@ jobs:
 
       - name: Build APK
         run: |
-          # --product: Nombre visible de la app
-          # --permissions camera: Habilita el hardware de cámara
-          # --permissions photo_library: Habilita lectura/escritura de imágenes
-          flet build apk --verbose --product "Tecnocomp" --permissions camera photo_library
+          # Usamos 'yes |' para aceptar automáticamente la instalación de Flutter SDK
+          yes | flet build apk --verbose --product "Tecnocomp" --permissions camera photo_library
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

@@ -46,10 +46,8 @@ jobs:
 
       - name: Build APK
         run: |
-          # --product: Nombre visible de la app
-          # --permissions camera: Habilita el hardware de cámara
-          # --permissions photo_library: Habilita lectura/escritura de imágenes
-          flet build apk --verbose --product "Tecnocomp" --permissions camera photo_library
+          # Usamos 'yes |' para aceptar automáticamente la instalación de Flutter SDK
+          yes | flet build apk --verbose --product "Tecnocomp" --permissions camera photo_library
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

@@ -1,8 +1,5 @@
+flet==0.24.1
 fpdf2
-flet>=0.25.0
-flet-runtime>=0.25.0
 Pillow
 pytz
 requests
-plyer
-pyjnius

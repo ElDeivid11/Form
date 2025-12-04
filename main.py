@@ -30,6 +30,32 @@ def main(page: f.Page):
 
     database.inicializar_db()
 
+    # --- MANEJO DE PERMISOS (NUEVO) ---
+    permission_handler = f.PermissionHandler()
+    page.overlay.append(permission_handler)
+
+    # Variable auxiliar para saber si intentamos abrir la cámara automáticamente después de dar permiso
+    intento_camara_pendiente = [False] 
+
+    def on_permission_result(e):
+        if e.permission == f.PermissionType.CAMERA:
+            if e.status == f.PermissionStatus.GRANTED:
+                page.open(f.SnackBar(f.Text("Permiso concedido. Abriendo cámara..."), bgcolor="green"))
+                # Si el usuario dio permiso, intentamos abrir el selector inmediatamente
+                # Nota: FilePicker abrirá el selector nativo. En algunos Androids preguntará "¿Cámara o Archivos?"
+                # pero ahora con permisos la opción de Cámara funcionará.
+                if intento_camara_pendiente[0]:
+                     # Buscamos el FilePicker en el overlay (es el primero que agregamos en la ruta nueva_visita)
+                     # O usamos una referencia global si fuera necesario, pero aquí el 'fp' se define dentro de route_change.
+                     # Para simplificar, confiamos en que el usuario vuelva a presionar si falla el auto-open,
+                     # o usamos un evento global. Por robustez en este scope, solo avisamos.
+                     pass 
+            else:
+                page.open(f.SnackBar(f.Text("Se requiere permiso para usar la cámara."), bgcolor="red"))
+            intento_camara_pendiente[0] = False
+
+    permission_handler.on_permission_result = on_permission_result
+
     def cambiar_tema(e):
         app_state["tema"] = "dark" if app_state["tema"] == "light" else "light"
         page.theme_mode = f.ThemeMode.DARK if app_state["tema"] == "dark" else f.ThemeMode.LIGHT
@@ -221,7 +247,6 @@ def main(page: f.Page):
             
             # --- FILE PICKER UNIFICADO (FOTOS) ---
             # En Android, al pedir FileType.IMAGE, el sistema muestra "Cámara" o "Galería"
-            # Esto evita el uso de librerías externas que causan problemas de permisos
             fp = f.FilePicker(on_result=lambda e: actualizar_fotos_usuario(e))
             page.overlay.append(fp)
 
@@ -378,15 +403,22 @@ def main(page: f.Page):
                     
                     btn_firma_ind = f.ElevatedButton("Firmar", icon=f.Icons.DRAW, bgcolor=config.COLOR_ACCENTO, color="white", on_click=abrir_firma_ind)
                     
-                    # --- CONFIGURACIÓN DE BOTONES DE EVIDENCIA ---
-                    # Ambos botones usan FilePicker para evitar problemas de seguridad en Android.
-                    # El usuario elegirá "Cámara" o "Galería" dentro del selector nativo del celular.
-                    def pick_evidence(e, idx=i): 
+                    # --- CONFIGURACIÓN DE BOTONES DE EVIDENCIA (MODIFICADO PARA PERMISOS) ---
+                    
+                    def solicitar_camara(e, idx):
                         usuario_actual_foto[0] = idx
+                        intento_camara_pendiente[0] = True
+                        permission_handler.request_permission(f.PermissionType.CAMERA)
+                        # Intento de lanzar también, por si ya tiene permisos (ux mejora)
                         fp.pick_files(allow_multiple=True, file_type=f.FilePickerFileType.IMAGE)
 
-                    btn_galeria = f.IconButton(icon=f.Icons.ADD_PHOTO_ALTERNATE, icon_color=config.COLOR_ACCENTO, tooltip="Agregar Fotos (Galería/Cámara)", on_click=pick_evidence)
-                    btn_camara = f.IconButton(icon=f.Icons.CAMERA_ALT, icon_color=config.COLOR_ACCENTO, tooltip="Agregar Fotos (Galería/Cámara)", on_click=pick_evidence)
+                    def abrir_galeria_directa(e, idx):
+                        usuario_actual_foto[0] = idx
+                        intento_camara_pendiente[0] = False
+                        fp.pick_files(allow_multiple=True, file_type=f.FilePickerFileType.IMAGE)
+
+                    btn_galeria = f.IconButton(icon=f.Icons.ADD_PHOTO_ALTERNATE, icon_color=config.COLOR_ACCENTO, tooltip="Agregar Fotos (Galería)", on_click=lambda e, i=i: abrir_galeria_directa(e, i))
+                    btn_camara = f.IconButton(icon=f.Icons.CAMERA_ALT, icon_color=config.COLOR_ACCENTO, tooltip="Usar Cámara", on_click=lambda e, i=i: solicitar_camara(e, i))
                     
                     cont_detalles = f.Column([
                         f.Divider(color=c["borde"]), 

@@ -123,11 +123,13 @@ def agregar_cliente(nombre, email):
     try: 
         con = conectar()
         cur = con.cursor()
-        cur.execute("INSERT INTO clientes (nombre, email) VALUES (?, ?)", (nombre, email))
+        # MODIFICADO: Usamos INSERT OR REPLACE para actualizar el email si el cliente ya existe
+        cur.execute("INSERT OR REPLACE INTO clientes (nombre, email) VALUES (?, ?)", (nombre, email))
         con.commit()
         con.close()
         return True
-    except: 
+    except Exception as e: 
+        print(f"Error agregando cliente DB: {e}")
         return False
 
 def eliminar_cliente(nombre):

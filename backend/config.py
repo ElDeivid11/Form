@@ -4,15 +4,15 @@ import os
 # CONFIGURACIÓN GENERAL
 # ==========================================
 
-FONT_FAMILY = "Poppins"
+FONT_FAMILY = "Helvetica" # FPDF usa fuentes core por defecto
 NOMBRE_EMPRESA_ONEDRIVE = "Tecnocomp Computacion Ltda"
-CARPETA_LOCAL_INFORMES = "Informes"
 
-# CONTRASEÑA DE ADMINISTRADOR (Para Backups)
-ADMIN_PASSWORD = "admin123"  # <--- CAMBIA ESTO POR TU CONTRASEÑA REAL
-SHAREPOINT_BACKUP_FOLDER = "Backups_DB" # Nombre de la carpeta en SharePoint
+# --- SEGURIDAD: Leemos del entorno o usamos un valor por defecto solo para pruebas locales ---
+# En Render, configuraremos estas variables en el panel de control.
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123") 
+SHAREPOINT_BACKUP_FOLDER = "Backups_DB"
 
-# Tareas de Mantenimiento (Actualizadas según procedimiento oficial)
+# Tareas de Mantenimiento
 TAREAS_MANTENIMIENTO = [
     "Solicitar cierre de documentos y credenciales",
     "Reinicio Forzado (Shutdown -r -f -t 00)",
@@ -23,29 +23,26 @@ TAREAS_MANTENIMIENTO = [
     "Antivirus (Escaneo Rápido + Evidencia)"
 ]
 
-# DATOS INICIALES
+# DATOS INICIALES (Clientes por defecto si la DB está vacía)
 CORREOS_POR_CLIENTE = {
     "Intermar": "contacto@intermar.cl",
     "Las200": "admin@las200.cl"
 }
 
 USUARIOS_POR_CLIENTE = {
-    "Intermar": ["Raimundo Chico", "Raimundo Grande", "Usuario ejemplo"],
-    "Las200": ["Nieves Vallejos", "Jennifer No se cuanto", "Benjamin Practicas"]
+    "Intermar": ["Usuario 1", "Usuario 2"],
+    "Las200": ["Usuario A", "Usuario B"]
 }
 
 # ==========================================
-# CONFIGURACIÓN DE EMAIL (MICROSOFT GRAPH - OFICIAL)
+# CREDENCIALES MICROSOFT GRAPH (SEGURAS)
 # ==========================================
-# Debes obtener estos datos en portal.azure.com > App Registrations
-GRAPH_CLIENT_ID = "87031f88-8c50-4364-85e5-077be791f083"
-GRAPH_CLIENT_SECRET = "IFH8Q~3m-PbYWbiRKUqQKHmP5cSUsOH1sTTzobNZ"
-GRAPH_TENANT_ID = "00ed6bb9-1aca-4148-8f24-ee2de2078796"
-GRAPH_USER_EMAIL = "soporte@tecnocomp.cl"
+GRAPH_CLIENT_ID = os.getenv("GRAPH_CLIENT_ID", "TU_CLIENT_ID_LOCAL")
+GRAPH_CLIENT_SECRET = os.getenv("GRAPH_CLIENT_SECRET", "TU_SECRET_LOCAL")
+GRAPH_TENANT_ID = os.getenv("GRAPH_TENANT_ID", "TU_TENANT_ID_LOCAL")
+GRAPH_USER_EMAIL = os.getenv("GRAPH_USER_EMAIL", "soporte@tecnocomp.cl")
 
-# ==========================================
-# CONFIGURACIÓN SHAREPOINT (PENDIENTE APROBACIÓN)
-# ==========================================
+# SHAREPOINT
 SHAREPOINT_HOST_NAME = "tecnocompcomputacion.sharepoint.com" 
 SHAREPOINT_SITE_PATH = "/sites/Pruueba" 
 SHAREPOINT_DRIVE_NAME = "Documentos"
@@ -76,5 +73,7 @@ COLORES = {
 COLORES_GRAFICOS = ["blue", "purple", "teal", "orange", "pink", "cyan", "indigo"]
 
 # Asegurar directorios
-if not os.path.exists(CARPETA_LOCAL_INFORMES):
-    os.makedirs(CARPETA_LOCAL_INFORMES)
+if not os.path.exists("backups"):
+    os.makedirs("backups")
+if not os.path.exists("reportes"):
+    os.makedirs("reportes")

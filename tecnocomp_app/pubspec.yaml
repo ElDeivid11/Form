@@ -31,7 +31,8 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  # --- AGREGA ESTO ---
+  signature: ^5.4.0
+  shared_preferences: ^2.2.2
   http: ^1.2.0            # Para hablar con tu Python
   sqflite: ^2.3.0         # Base de datos local
   path: ^1.9.0            # Manejo de rutas

@@ -16,14 +16,15 @@ class DBHelper {
   }
 
   Future<Database> _initDB() async {
-    // CAMBIO V4: Para limpiar estructura y agregar campo 'enviado'
-    String path = join(await getDatabasesPath(), 'tecnocomp_v4.db');
+    // CAMBIO V5: Nueva versión para incluir email en técnicos
+    String path = join(await getDatabasesPath(), 'tecnocomp_v5.db');
     return await openDatabase(
       path,
       version: 1,
       onCreate: (db, version) async {
         await db.execute('CREATE TABLE clientes(nombre TEXT PRIMARY KEY, email TEXT)');
-        await db.execute('CREATE TABLE tecnicos(nombre TEXT PRIMARY KEY)');
+        // AHORA TECNICOS TIENE EMAIL
+        await db.execute('CREATE TABLE tecnicos(nombre TEXT PRIMARY KEY, email TEXT)');
         
         await db.execute('''
           CREATE TABLE usuarios_frecuentes(
@@ -34,7 +35,6 @@ class DBHelper {
           )
         ''');
 
-        // NUEVO CAMPO: enviado (0=Pendiente, 1=Enviado)
         await db.execute('''
           CREATE TABLE reportes(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,16 +80,24 @@ class DBHelper {
     return null;
   }
 
-  // --- TÉCNICOS ---
-  Future<void> agregarTecnicoLocal(String nombre) async {
+  // --- TÉCNICOS (ACTUALIZADO) ---
+  Future<void> agregarTecnicoLocal(String nombre, String email) async {
     final db = await database;
-    await db.insert('tecnicos', {'nombre': nombre}, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert('tecnicos', {'nombre': nombre, 'email': email}, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<List<String>> getTecnicos() async {
     final db = await database;
     final res = await db.query('tecnicos', orderBy: 'nombre ASC');
     return res.map((e) => e['nombre'] as String).toList();
+  }
+
+  // NUEVO: OBTENER EMAIL TÉCNICO
+  Future<String?> getTecnicoEmail(String nombre) async {
+    final db = await database;
+    final res = await db.query('tecnicos', columns: ['email'], where: 'nombre = ?', whereArgs: [nombre]);
+    if (res.isNotEmpty) return res.first['email'] as String?;
+    return null;
   }
 
   Future<void> eliminarTecnico(String nombre) async {
@@ -122,6 +130,8 @@ class DBHelper {
         await txn.rawInsert('INSERT OR IGNORE INTO clientes(nombre, email) VALUES(?, ?)', [c[0], c[1]]);
       }
       for (var t in tecnicos) {
+        // Nota: La sincronización simple solo trae nombres por ahora, 
+        // pero mantendremos la compatibilidad.
         await txn.rawInsert('INSERT OR IGNORE INTO tecnicos(nombre) VALUES(?)', [t]);
       }
     });
@@ -138,25 +148,21 @@ class DBHelper {
     return await db.update('reportes', row, where: 'id = ?', whereArgs: [id]);
   }
 
-  // NUEVO: Marcar como enviado en lugar de borrar
   Future<void> marcarComoEnviado(int id) async {
     final db = await database;
     await db.update('reportes', {'enviado': 1}, where: 'id = ?', whereArgs: [id]);
   }
 
-  // NUEVO: Obtener solo pendientes
   Future<List<Map<String, dynamic>>> getReportesPendientes() async {
     final db = await database;
     return await db.query('reportes', where: 'enviado = 0', orderBy: "id DESC");
   }
 
-  // NUEVO: Obtener solo enviados (historial)
   Future<List<Map<String, dynamic>>> getReportesEnviados() async {
     final db = await database;
     return await db.query('reportes', where: 'enviado = 1', orderBy: "id DESC");
   }
 
-  // Borrado físico (solo si el usuario quiere limpiar el historial)
   Future<void> borrarReporteFisico(int id) async {
     final db = await database;
     await db.delete('reportes', where: 'id = ?', whereArgs: [id]);

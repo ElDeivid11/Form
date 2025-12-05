@@ -45,26 +45,33 @@ class ApiService {
     }
   }
 
-  // 2. SUBIR REPORTE
+  // 2. SUBIR REPORTE (ACTUALIZADO CON EMAIL TÉCNICO)
   static Future<bool> subirReporte(Map<String, dynamic> reporte) async {
     try {
       String baseUrl = await _getBaseUrl();
       var uri = Uri.parse('$baseUrl/reporte/crear');
       var request = http.MultipartRequest('POST', uri);
 
-      // Campos Básicos
+      // --- CAMPOS BÁSICOS ---
       request.fields['cliente'] = reporte['cliente'];
       request.fields['tecnico'] = reporte['tecnico'];
       request.fields['obs'] = reporte['obs'];
       request.fields['datos_usuarios'] = reporte['datos_usuarios'];
 
-      // Email del cliente (si existe)
+      // --- 1. EMAIL DEL CLIENTE (Si existe) ---
       String? emailCliente = await DBHelper().getClientEmail(reporte['cliente']);
       if (emailCliente != null && emailCliente.isNotEmpty) {
         request.fields['email_cliente'] = emailCliente;
       }
 
-      // Archivos (Fotos y Firmas)
+      // --- 2. EMAIL DEL TÉCNICO (NUEVO) ---
+      // Buscamos el correo del técnico en la BD local para enviarlo al servidor
+      String? emailTecnico = await DBHelper().getTecnicoEmail(reporte['tecnico']);
+      if (emailTecnico != null && emailTecnico.isNotEmpty) {
+        request.fields['email_tecnico'] = emailTecnico;
+      }
+
+      // --- ARCHIVOS (FOTOS Y FIRMAS) ---
       List<dynamic> usuarios = json.decode(reporte['datos_usuarios']);
       
       for (var u in usuarios) {
@@ -85,6 +92,7 @@ class ApiService {
         }
       }
 
+      // --- ENVIAR SOLICITUD ---
       var response = await request.send();
       
       if (response.statusCode == 200) {

@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:signature/signature.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // IMPORTANTE
+import 'package:shared_preferences/shared_preferences.dart';
 import 'db_helper.dart';
 import 'api_service.dart';
 
@@ -24,6 +24,24 @@ const Color kSecondaryColorDark = Color(0xFFF57C00);
 const Color kBackgroundColorDark = Color(0xFF121212); 
 const Color kCardColorDark = Color(0xFF1E1E1E); 
 const double kRadius = 16.0;
+
+// --- EXPRESIÓN REGULAR PARA NOMBRES (Solo letras y espacios) ---
+bool _validarTextoSinNumeros(String texto) {
+  final regex = RegExp(r'^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$');
+  return regex.hasMatch(texto);
+}
+
+// --- LISTA DE TAREAS PREDEFINIDAS ---
+const List<String> kTareasPredefinidas = [
+  "Limpieza Física",
+  "Optimización SW",
+  "Instalación Office",
+  "Respaldo Datos",
+  "Configuración Correo",
+  "Cambio Pasta Térmica",
+  "Diagnóstico HW",
+  "Formateo Completo"
+];
 
 void main() {
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(statusBarColor: Colors.transparent));
@@ -151,7 +169,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (ok) {
       _mostrarSnack("Datos actualizados correctamente", Colors.green);
     } else {
-      _mostrarConfigurarIP(); // Si falla, sugerimos configurar IP
+      _mostrarConfigurarIP();
     }
   }
 
@@ -167,24 +185,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
-  }
-
-  void _subirPendientes() async {
-    final list = await DBHelper().getReportesPendientes();
-    if (list.isEmpty) return;
-    
-    _mostrarLoading("Subiendo ${list.length} reportes...");
-    int subidos = 0;
-    for (var rep in list) {
-      bool ok = await ApiService.subirReporte(rep);
-      if (ok) {
-        await DBHelper().marcarComoEnviado(rep['id']);
-        subidos++;
-      }
-    }
-    Navigator.pop(context);
-    _cargarPendientes();
-    _mostrarSnack("Proceso finalizado. Subidos: $subidos", Colors.blue);
   }
 
   void _mostrarLoading(String texto) {
@@ -207,7 +207,6 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: color, content: Text(texto), behavior: SnackBarBehavior.floating));
   }
 
-  // --- NUEVO: DIÁLOGO DE CONFIGURACIÓN ---
   void _abrirConfiguracion() async {
     final prefs = await SharedPreferences.getInstance();
     final controller = TextEditingController(text: prefs.getString('api_url') ?? "http://192.168.1.X:8000");
@@ -287,12 +286,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       Row(
                         children: [
-                          // BOTÓN TEMA
                           IconButton(
                             icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode, color: Colors.white),
                             onPressed: () => themeNotifier.value = isDark ? ThemeMode.light : ThemeMode.dark,
                           ),
-                          // NUEVO: BOTÓN CONFIGURACIÓN
                           IconButton(
                             icon: const Icon(Icons.settings, color: Colors.white),
                             onPressed: _abrirConfiguracion,
@@ -351,7 +348,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           const SizedBox(width: 15),
                           Expanded(
                             child: _DashboardSmallCard(
-                              icon: Icons.storage, // Icono cambiado para reflejar gestión de datos
+                              icon: Icons.storage, 
                               title: "Gestión Datos", 
                               color: isDark ? kCardColorDark : Colors.blueGrey.shade50,
                               iconColor: isDark ? Colors.grey : Colors.blueGrey,
@@ -461,7 +458,7 @@ class _DashboardSmallCard extends StatelessWidget {
   }
 }
 
-// --- PANTALLA HISTORIAL ---
+// --- PANTALLA HISTORIAL (Sin cambios mayores, solo referencias) ---
 class PantallaHistorial extends StatefulWidget {
   const PantallaHistorial({super.key});
   @override
@@ -490,14 +487,8 @@ class _PantallaHistorialState extends State<PantallaHistorial> with SingleTicker
   }
 
   void _enviarReporte(Map<String, dynamic> reporte) async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
-
+    showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
     bool ok = await ApiService.subirReporte(reporte);
-    
     if(!mounted) return;
     Navigator.pop(context);
 
@@ -506,23 +497,17 @@ class _PantallaHistorialState extends State<PantallaHistorial> with SingleTicker
       _cargar();
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Enviado correctamente"), backgroundColor: Colors.green));
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error al enviar. Revisa la IP en Configuración."), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error al enviar."), backgroundColor: Colors.red));
     }
   }
 
   void _editarReporte(Map<String, dynamic> reporte) async {
-    await Navigator.push(
-      context, 
-      MaterialPageRoute(builder: (_) => FormularioVisita(reporteEditar: reporte, soloLectura: false))
-    );
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => FormularioVisita(reporteEditar: reporte, soloLectura: false)));
     _cargar();
   }
 
   void _verReporte(Map<String, dynamic> reporte) async {
-    await Navigator.push(
-      context, 
-      MaterialPageRoute(builder: (_) => FormularioVisita(reporteEditar: reporte, soloLectura: true))
-    );
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => FormularioVisita(reporteEditar: reporte, soloLectura: true)));
   }
 
   void _borrarReporte(int id) async {
@@ -533,7 +518,6 @@ class _PantallaHistorialState extends State<PantallaHistorial> with SingleTicker
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
     return Scaffold(
       appBar: AppBar(
         title: const Text("Historial"),
@@ -541,23 +525,18 @@ class _PantallaHistorialState extends State<PantallaHistorial> with SingleTicker
           controller: _tabController,
           indicatorColor: isDark ? kPrimaryColorDark : Colors.white,
           labelColor: isDark ? kPrimaryColorDark : Colors.white,
-          unselectedLabelColor: isDark ? Colors.grey : Colors.white60,
           tabs: const [Tab(text: "Pendientes"), Tab(text: "Enviados")],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _listaReportes(_pendientes, true),
-          _listaReportes(_enviados, false),
-        ],
+        children: [_listaReportes(_pendientes, true), _listaReportes(_enviados, false)],
       ),
     );
   }
 
   Widget _listaReportes(List<Map<String, dynamic>> lista, bool esPendiente) {
     if (lista.isEmpty) return const Center(child: Text("No hay reportes", style: TextStyle(color: Colors.grey)));
-    
     return ListView.separated(
       padding: const EdgeInsets.all(15),
       itemCount: lista.length,
@@ -565,41 +544,24 @@ class _PantallaHistorialState extends State<PantallaHistorial> with SingleTicker
       itemBuilder: (ctx, i) {
         final rep = lista[i];
         return Card(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8.0),
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: esPendiente ? Colors.orange.withOpacity(0.2) : Colors.green.withOpacity(0.2),
-                child: Icon(esPendiente ? Icons.upload_file : Icons.check_circle, color: esPendiente ? Colors.orange : Colors.green),
-              ),
-              title: Text(rep['cliente'] ?? "Sin Cliente", style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text("Téc: ${rep['tecnico']}\n${rep['fecha_creacion'].toString().split('.')[0]}"),
-              isThreeLine: true,
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (esPendiente) ...[
-                    IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _editarReporte(rep)),
-                    IconButton(icon: const Icon(Icons.send, color: Colors.green), onPressed: () => _enviarReporte(rep)),
-                  ] else ...[
-                    IconButton(icon: const Icon(Icons.visibility, color: Colors.grey), onPressed: () => _verReporte(rep)),
-                  ],
-                  IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.grey),
-                    onPressed: () => showDialog(
-                      context: context,
-                      builder: (c) => AlertDialog(
-                        title: const Text("¿Borrar?"),
-                        content: const Text("Se eliminará este reporte del dispositivo."),
-                        actions: [
-                          TextButton(onPressed: ()=>Navigator.pop(c), child: const Text("Cancelar")),
-                          TextButton(onPressed: (){ _borrarReporte(rep['id']); Navigator.pop(c); }, child: const Text("Borrar", style: TextStyle(color: Colors.red))),
-                        ],
-                      )
-                    ),
-                  ),
-                ],
-              ),
+          child: ListTile(
+            leading: Icon(esPendiente ? Icons.upload_file : Icons.check_circle, color: esPendiente ? Colors.orange : Colors.green),
+            title: Text(rep['cliente'] ?? "Sin Cliente"),
+            subtitle: Text("Téc: ${rep['tecnico']}\n${rep['fecha_creacion'].toString().split('.')[0]}"),
+            isThreeLine: true,
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (esPendiente) ...[
+                  IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _editarReporte(rep)),
+                  IconButton(icon: const Icon(Icons.send, color: Colors.green), onPressed: () => _enviarReporte(rep)),
+                ] else
+                  IconButton(icon: const Icon(Icons.visibility, color: Colors.grey), onPressed: () => _verReporte(rep)),
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.grey),
+                  onPressed: () { _borrarReporte(rep['id']); },
+                ),
+              ],
             ),
           ),
         );
@@ -636,27 +598,12 @@ class _PantallaGestionDatosState extends State<PantallaGestionDatos> with Single
       String nombreCli = c['nombre'];
       usuariosMap[nombreCli] = await DBHelper().getUsuariosPorCliente(nombreCli);
     }
-    setState(() {
-      _clientes = cls;
-      _tecnicos = tcs;
-      _usuariosPorCliente = usuariosMap;
-    });
+    setState(() { _clientes = cls; _tecnicos = tcs; _usuariosPorCliente = usuariosMap; });
   }
 
-  void _borrarCliente(String nombre) async {
-    await DBHelper().eliminarCliente(nombre);
-    _cargarDatos();
-  }
-
-  void _borrarTecnico(String nombre) async {
-    await DBHelper().eliminarTecnico(nombre);
-    _cargarDatos();
-  }
-
-  void _borrarUsuario(String nombreUsuario, String cliente) async {
-    await DBHelper().eliminarUsuarioFrecuente(nombreUsuario, cliente);
-    _cargarDatos();
-  }
+  void _borrarCliente(String nombre) async { await DBHelper().eliminarCliente(nombre); _cargarDatos(); }
+  void _borrarTecnico(String nombre) async { await DBHelper().eliminarTecnico(nombre); _cargarDatos(); }
+  void _borrarUsuario(String nombreUsuario, String cliente) async { await DBHelper().eliminarUsuarioFrecuente(nombreUsuario, cliente); _cargarDatos(); }
 
   @override
   Widget build(BuildContext context) {
@@ -670,7 +617,6 @@ class _PantallaGestionDatosState extends State<PantallaGestionDatos> with Single
           controller: _tabController,
           indicatorColor: isDark ? primary : Colors.white,
           labelColor: isDark ? primary : Colors.white,
-          unselectedLabelColor: isDark ? Colors.grey : Colors.white60,
           tabs: const [Tab(text: "Clientes"), Tab(text: "Técnicos"), Tab(text: "Usuarios")],
         ),
       ),
@@ -713,20 +659,10 @@ class _PantallaGestionDatosState extends State<PantallaGestionDatos> with Single
       itemBuilder: (ctx, i) => Card(
         child: ListTile(
           leading: CircleAvatar(backgroundColor: color.withOpacity(0.1), child: Icon(icono, color: color, size: 20)),
-          title: Text(items[i], style: const TextStyle(fontWeight: FontWeight.w500)),
+          title: Text(items[i]),
           trailing: IconButton(
             icon: const Icon(Icons.delete, color: Colors.grey),
-            onPressed: () => showDialog(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Text("¿Eliminar?"),
-                content: Text("Se borrará ${items[i]} de la base de datos local."),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar")),
-                  TextButton(onPressed: () { onBorrar(items[i]); Navigator.pop(ctx); }, child: const Text("Eliminar", style: TextStyle(color: Colors.red))),
-                ],
-              ),
-            ),
+            onPressed: () => onBorrar(items[i]),
           ),
         ),
       ),
@@ -734,7 +670,7 @@ class _PantallaGestionDatosState extends State<PantallaGestionDatos> with Single
   }
 }
 
-// --- FORMULARIO DE VISITA ---
+// --- FORMULARIO DE VISITA (MODIFICADO PARA TABLET Y CHECKLIST) ---
 class FormularioVisita extends StatefulWidget {
   final Map<String, dynamic>? reporteEditar;
   final bool soloLectura; 
@@ -753,6 +689,9 @@ class _FormularioVisitaState extends State<FormularioVisita> {
   String? _selectedTecnico;
   final TextEditingController _obsController = TextEditingController();
   List<Map<String, dynamic>> _usuarios = [];
+  
+  // Para el modo tablet: índice del usuario seleccionado actualmente
+  int _usuarioSeleccionadoIndex = -1;
 
   @override
   void initState() {
@@ -772,7 +711,16 @@ class _FormularioVisitaState extends State<FormularioVisita> {
         _selectedTecnico = rep['tecnico'];
         _obsController.text = rep['obs'];
         List<dynamic> usersRaw = json.decode(rep['datos_usuarios']);
-        _usuarios = List<Map<String, dynamic>>.from(usersRaw);
+        // Restaurar estado
+        _usuarios = usersRaw.map((u) {
+          // Asegurar que el mapa de tareas exista si viene de una versión vieja
+          if (u['tareas_map'] == null) {
+             u['tareas_map'] = <String, dynamic>{}; 
+          }
+          return Map<String, dynamic>.from(u);
+        }).toList();
+        
+        if (_usuarios.isNotEmpty) _usuarioSeleccionadoIndex = 0;
       });
     }
   }
@@ -790,22 +738,37 @@ class _FormularioVisitaState extends State<FormularioVisita> {
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(controller: controller, decoration: const InputDecoration(labelText: "Nombre"), textCapitalization: TextCapitalization.words),
-            if (esCliente) ...[const SizedBox(height: 10), TextField(controller: emailController, decoration: const InputDecoration(labelText: "Email Reportes"), keyboardType: TextInputType.emailAddress)],
+            const SizedBox(height: 10),
+            // --- AHORA PIDE EMAIL SIEMPRE (CLIENTE O TÉCNICO) ---
+            TextField(
+              controller: emailController, 
+              decoration: const InputDecoration(labelText: "Email para reportes"), 
+              keyboardType: TextInputType.emailAddress
+            ),
           ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar")),
           ElevatedButton(
             onPressed: () async {
-              if (controller.text.isNotEmpty) {
-                if (esCliente) await DBHelper().agregarClienteLocal(controller.text, emailController.text);
-                else await DBHelper().agregarTecnicoLocal(controller.text);
+              final nombre = controller.text.trim();
+              if (nombre.isNotEmpty) {
+                if (!esCliente && !_validarTextoSinNumeros(nombre)) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("El nombre solo puede contener letras."), backgroundColor: Colors.red));
+                  return;
+                }
+
+                if (esCliente) {
+                   await DBHelper().agregarClienteLocal(nombre, emailController.text);
+                   _alSeleccionarCliente(nombre);
+                } else {
+                   // Guardamos también el email del técnico
+                   await DBHelper().agregarTecnicoLocal(nombre, emailController.text);
+                   setState(() => _selectedTecnico = nombre);
+                }
+                
                 Navigator.pop(ctx);
                 await _cargarDatosLocales();
-                setState(() {
-                  if (esCliente) _alSeleccionarCliente(controller.text);
-                  else _selectedTecnico = controller.text;
-                });
               }
             },
             child: const Text("Guardar"),
@@ -817,21 +780,40 @@ class _FormularioVisitaState extends State<FormularioVisita> {
 
   void _agregarUsuarioRapido() {
     if (widget.soloLectura) return;
-    if (_selectedCliente == null) return;
+    if (_selectedCliente == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Selecciona un cliente primero.")));
+      return;
+    }
     final controller = TextEditingController();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("Nuevo Usuario"),
-        content: TextField(controller: controller, decoration: const InputDecoration(labelText: "Nombre")),
+        content: TextField(controller: controller, decoration: const InputDecoration(labelText: "Nombre (Sin números)")),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar")),
           ElevatedButton(
             onPressed: () async {
-              if (controller.text.isNotEmpty) {
-                await DBHelper().guardarUsuarioFrecuente(controller.text, _selectedCliente!);
+              final nombre = controller.text.trim();
+              if (nombre.isNotEmpty) {
+                // VALIDACIÓN: No permitir números en Usuario
+                if (!_validarTextoSinNumeros(nombre)) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Nombre inválido. Solo letras."), backgroundColor: Colors.red));
+                  return;
+                }
+
+                await DBHelper().guardarUsuarioFrecuente(nombre, _selectedCliente!);
                 setState(() {
-                  _usuarios.add({'nombre': controller.text, 'atendido': true, 'trabajo': '', 'motivo': '', 'fotos': [], 'firma': null});
+                  _usuarios.add({
+                    'nombre': nombre, 
+                    'atendido': true, 
+                    'trabajo': '', 
+                    'motivo': '', 
+                    'fotos': [], 
+                    'firma': null,
+                    'tareas_map': {} // Mapa vacio de tareas
+                  });
+                  _usuarioSeleccionadoIndex = _usuarios.length - 1; // Seleccionar el nuevo
                 });
                 Navigator.pop(ctx);
               }
@@ -850,12 +832,17 @@ class _FormularioVisitaState extends State<FormularioVisita> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("¿Eliminar?"),
-        content: Text("¿Borrar a '$nombreUsuario' de la lista de frecuentes?"),
+        content: Text("¿Borrar a '$nombreUsuario'?"),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar")),
           TextButton(onPressed: () async {
-              if (_selectedCliente != null) await DBHelper().eliminarUsuarioFrecuente(nombreUsuario, _selectedCliente!);
-              setState(() => _usuarios.removeAt(index));
+              // No lo borramos de la DB de frecuentes, solo del reporte actual
+              setState(() {
+                 _usuarios.removeAt(index);
+                 if (_usuarioSeleccionadoIndex >= _usuarios.length) {
+                   _usuarioSeleccionadoIndex = _usuarios.length - 1;
+                 }
+              });
               Navigator.pop(ctx);
             },
             child: const Text("Eliminar", style: TextStyle(color: Colors.red)),
@@ -871,17 +858,45 @@ class _FormularioVisitaState extends State<FormularioVisita> {
        setState(() => _selectedCliente = cliente);
        return;
     }
-    setState(() { _selectedCliente = cliente; _usuarios = []; });
+    setState(() { _selectedCliente = cliente; _usuarios = []; _usuarioSeleccionadoIndex = -1; });
     if (cliente != null) {
       var usersGuardados = await DBHelper().getUsuariosPorCliente(cliente);
       if (usersGuardados.isNotEmpty) {
         setState(() {
           _usuarios = usersGuardados.map((nombre) => {
-            'nombre': nombre, 'atendido': true, 'trabajo': '', 'motivo': '', 'fotos': [], 'firma': null
+            'nombre': nombre, 'atendido': true, 'trabajo': '', 'motivo': '', 'fotos': [], 'firma': null, 'tareas_map': {}
           }).toList();
+          _usuarioSeleccionadoIndex = 0; // Seleccionar el primero por defecto
         });
       }
     }
+  }
+
+  // --- LOGICA CHECKLIST ---
+  void _toggleTarea(int indexUsuario, String tarea, bool valor) {
+    if (widget.soloLectura) return;
+    setState(() {
+      Map tareasMap = _usuarios[indexUsuario]['tareas_map'] ?? {};
+      
+      if (valor) {
+        // Guardamos la hora actual HH:MM
+        String hora = DateTime.now().toString().substring(11, 16);
+        tareasMap[tarea] = hora;
+      } else {
+        tareasMap.remove(tarea);
+      }
+      _usuarios[indexUsuario]['tareas_map'] = tareasMap;
+
+      // ACTUALIZAR EL STRING 'trabajo' PARA COMPATIBILIDAD CON PDF
+      // Ejemplo: "Limpieza (10:00), Formateo (10:30)"
+      List<String> partes = [];
+      tareasMap.forEach((k, v) {
+        partes.add("$k ($v)");
+      });
+      // Si hay texto manual previo que no esté en tareas, podríamos perderlo, 
+      // así que asumimos que el checklist manda. O concatenamos un campo 'extra'.
+      _usuarios[indexUsuario]['trabajo'] = partes.join(", ");
+    });
   }
 
   Future<void> _tomarFoto(int indexUsuario) async {
@@ -900,14 +915,33 @@ class _FormularioVisitaState extends State<FormularioVisita> {
 
   void _abrirFirma(int index) {
     if (widget.soloLectura) return;
+    
+    // DETECCIÓN DE TABLET para ajustar tamaño de firma
+    final isTablet = MediaQuery.of(context).size.width > 600;
+    final double signatureWidth = isTablet ? 600 : 300;
+    final double signatureHeight = isTablet ? 400 : 200;
+
     final SignatureController _controller = SignatureController(penStrokeWidth: 3, penColor: Colors.black, exportBackgroundColor: Colors.white);
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Firma del Usuario"),
-        content: Container(
-          decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300)),
-          child: Signature(controller: _controller, height: 200, width: 300, backgroundColor: Colors.white),
+        content: SizedBox(
+          width: signatureWidth,
+          height: signatureHeight,
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey.shade400),
+              color: Colors.grey[200], // Fondo gris suave para que se vea el área
+            ),
+            child: Signature(
+              controller: _controller, 
+              width: signatureWidth,
+              height: signatureHeight,
+              backgroundColor: Colors.transparent // Importante
+            ),
+          ),
         ),
         actions: [
           TextButton(onPressed: () => _controller.clear(), child: const Text("Borrar")),
@@ -928,13 +962,6 @@ class _FormularioVisitaState extends State<FormularioVisita> {
     );
   }
 
-  void _agregarUsuarioManual() {
-    if (widget.soloLectura) return;
-    setState(() {
-      _usuarios.add({'nombre': '', 'atendido': true, 'trabajo': '', 'motivo': '', 'fotos': [], 'firma': null});
-    });
-  }
-
   void _guardarLocalmente() async {
     if (widget.soloLectura) return;
     if (_selectedCliente == null || _selectedTecnico == null) {
@@ -942,17 +969,11 @@ class _FormularioVisitaState extends State<FormularioVisita> {
       return;
     }
 
-    for (var u in _usuarios) {
-      if (u['nombre'] != null && u['nombre'].toString().trim().isNotEmpty) {
-        await DBHelper().guardarUsuarioFrecuente(u['nombre'].toString().trim(), _selectedCliente!);
-      }
-    }
-
     Map<String, dynamic> reporte = {
       'cliente': _selectedCliente,
       'tecnico': _selectedTecnico,
       'obs': _obsController.text,
-      'datos_usuarios': json.encode(_usuarios),
+      'datos_usuarios': json.encode(_usuarios), // Aquí va el mapa con 'tareas_map' incluido
       'fecha_creacion': DateTime.now().toString(),
       'firma_path': null 
     };
@@ -974,192 +995,323 @@ class _FormularioVisitaState extends State<FormularioVisita> {
     final bool readOnly = widget.soloLectura;
     final String titulo = readOnly ? "Detalle Reporte" : (widget.reporteEditar != null ? "Editar Visita" : "Nueva Visita");
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = isDark ? kPrimaryColorDark : kPrimaryColor;
+    
+    // DETECTAR ANCHO DE PANTALLA PARA MODO TABLET
+    final width = MediaQuery.of(context).size.width;
+    final bool esTablet = width > 600;
 
     return Scaffold(
       appBar: AppBar(title: Text(titulo)),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text("INFORMACIÓN GENERAL", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: primary)),
-                    const SizedBox(height: 15),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            isExpanded: true,
-                            decoration: const InputDecoration(labelText: "Cliente", prefixIcon: Icon(Icons.business_outlined)),
-                            value: _selectedCliente,
-                            items: _clientes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                            onChanged: readOnly ? null : _alSeleccionarCliente,
-                          ),
-                        ),
-                        if (!readOnly) ...[
-                          const SizedBox(width: 8),
-                          _botonAddMini(() => _agregarItemRapido(true), Colors.green),
-                        ]
-                      ],
-                    ),
-                    const SizedBox(height: 15),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            isExpanded: true,
-                            decoration: const InputDecoration(labelText: "Técnico", prefixIcon: Icon(Icons.person_outline)),
-                            value: _selectedTecnico,
-                            items: _tecnicos.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                            onChanged: readOnly ? null : (v) => setState(() => _selectedTecnico = v),
-                          ),
-                        ),
-                        if (!readOnly) ...[
-                          const SizedBox(width: 8),
-                          _botonAddMini(() => _agregarItemRapido(false), Colors.orange),
-                        ]
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          if (esTablet) {
+            // --- DISEÑO TABLET (2 COLUMNAS) ---
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("REGISTRO DE USUARIOS", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
-                if (!readOnly) TextButton.icon(onPressed: _agregarUsuarioRapido, icon: const Icon(Icons.add_circle), label: const Text("Agregar"))
-              ],
-            ),
-            
-            ..._usuarios.asMap().entries.map((entry) {
-              int idx = entry.key;
-              Map usr = entry.value;
-              return Container(
-                margin: const EdgeInsets.only(bottom: 15),
-                decoration: BoxDecoration(
-                  color: isDark ? kCardColorDark : Colors.white, 
-                  borderRadius: BorderRadius.circular(kRadius), 
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))]
-                ),
-                child: Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(color: primary.withOpacity(0.1), borderRadius: const BorderRadius.vertical(top: Radius.circular(kRadius))),
-                      child: Row(
-                        children: [
-                          Icon(Icons.person, size: 18, color: primary),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              usr['nombre'] ?? "",
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                            ),
-                          ),
-                          if (!readOnly) IconButton(
-                            icon: const Icon(Icons.close, color: Colors.red, size: 18), 
-                            onPressed: () => _borrarUsuarioConConfirmacion(idx)
-                          )
-                        ],
-                      ),
+                // COLUMNA IZQUIERDA: GENERAL + LISTA USUARIOS
+                SizedBox(
+                  width: width * 0.4, // 40% del ancho
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        _buildGeneralCard(readOnly, isDark),
+                        const SizedBox(height: 20),
+                        _buildListaUsuarios(readOnly, isDark, compact: true),
+                        const SizedBox(height: 20),
+                        _buildBotonGuardar(readOnly),
+                      ],
                     ),
-                    Padding(
-                      padding: const EdgeInsets.all(16.0),
+                  ),
+                ),
+                // COLUMNA DERECHA: DETALLE DEL USUARIO SELECCIONADO
+                Expanded(
+                  child: Container(
+                    margin: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: isDark ? kCardColorDark : Colors.white,
+                      borderRadius: BorderRadius.circular(kRadius),
+                      boxShadow: [const BoxShadow(color: Colors.black12, blurRadius: 10)]
+                    ),
+                    child: _usuarioSeleccionadoIndex >= 0 && _usuarioSeleccionadoIndex < _usuarios.length
+                        ? _buildDetalleUsuario(_usuarioSeleccionadoIndex, readOnly, isDark)
+                        : const Center(child: Text("Selecciona un usuario para ver detalles", style: TextStyle(color: Colors.grey))),
+                  ),
+                ),
+              ],
+            );
+          } else {
+            // --- DISEÑO MOVIL (1 COLUMNA) ---
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  _buildGeneralCard(readOnly, isDark),
+                  const SizedBox(height: 20),
+                  // En móvil mostramos la lista completa expandida
+                  ..._usuarios.asMap().entries.map((e) {
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 15),
+                      decoration: BoxDecoration(
+                         color: isDark ? kCardColorDark : Colors.white,
+                         borderRadius: BorderRadius.circular(kRadius),
+                         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)]
+                      ),
                       child: Column(
                         children: [
-                          SwitchListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(usr['atendido'] ? "✅ Atendido" : "❌ No Atendido", style: TextStyle(color: usr['atendido'] ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
-                            value: usr['atendido'], 
-                            activeColor: Colors.green,
-                            onChanged: readOnly ? null : (v) => setState(() => usr['atendido'] = v)
-                          ),
-                          
-                          if (usr['atendido']) ...[
-                             TextFormField(
-                               initialValue: usr['trabajo'],
-                               decoration: const InputDecoration(labelText: "Trabajo realizado", alignLabelWithHint: true),
-                               maxLines: 2,
-                               readOnly: readOnly,
-                               onChanged: (v) => usr['trabajo'] = v,
-                             ),
-                             const SizedBox(height: 15),
-                             Row(
-                               children: [
-                                 Expanded(
-                                   child: _ActionButton(
-                                     icon: Icons.camera_alt,
-                                     text: "${(usr['fotos']??[]).length} Fotos",
-                                     color: isDark ? Colors.blueGrey.shade900 : Colors.blue.shade50,
-                                     textColor: Colors.blue,
-                                     onTap: () => _tomarFoto(idx),
-                                   ),
-                                 ),
-                                 const SizedBox(width: 10),
-                                 Expanded(
-                                   child: _ActionButton(
-                                     icon: Icons.draw,
-                                     text: usr['firma'] != null ? "Firmado" : "Firmar",
-                                     color: usr['firma'] != null 
-                                        ? (isDark ? Colors.green.shade900 : Colors.green.shade50) 
-                                        : (isDark ? Colors.orange.shade900 : Colors.orange.shade50),
-                                     textColor: usr['firma'] != null ? Colors.green : Colors.orange,
-                                     onTap: () => _abrirFirma(idx),
-                                   ),
-                                 ),
-                               ],
-                             )
-                          ] else
-                             TextFormField(
-                               initialValue: usr['motivo'],
-                               decoration: const InputDecoration(labelText: "Motivo no atención"),
-                               readOnly: readOnly,
-                               onChanged: (v) => usr['motivo'] = v,
-                             ),
+                          _buildHeaderUsuario(e.key, readOnly, isDark), // Header con nombre y X
+                          _buildDetalleUsuario(e.key, readOnly, isDark), // Contenido completo
                         ],
                       ),
-                    ),
-                  ],
-                ),
-              );
-            }),
-            
-            const SizedBox(height: 20),
-            
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text("CIERRE DE VISITA", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: primary)),
-                    const SizedBox(height: 15),
-                    TextField(controller: _obsController, decoration: const InputDecoration(labelText: "Observaciones Generales", prefixIcon: Icon(Icons.comment_outlined)), maxLines: 3, readOnly: readOnly),
-                    if (!readOnly) ...[
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _guardarLocalmente,
-                          child: Text(widget.reporteEditar != null ? "GUARDAR CAMBIOS" : "GUARDAR VISITA", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ]
-                  ],
-                ),
+                    );
+                  }),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                       const Text("REGISTRO", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                       if (!readOnly) TextButton.icon(onPressed: _agregarUsuarioRapido, icon: const Icon(Icons.add), label: const Text("Agregar Usuario"))
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  _buildBotonGuardar(readOnly),
+                ],
               ),
+            );
+          }
+        },
+      ),
+    );
+  }
+
+  // --- WIDGETS REUTILIZABLES ---
+
+  Widget _buildGeneralCard(bool readOnly, bool isDark) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("INFORMACIÓN GENERAL", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimaryColor)),
+            const SizedBox(height: 15),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: "Cliente", prefixIcon: Icon(Icons.business_outlined)),
+                    value: _selectedCliente,
+                    items: _clientes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                    onChanged: readOnly ? null : _alSeleccionarCliente,
+                  ),
+                ),
+                if (!readOnly) ...[
+                  const SizedBox(width: 8),
+                  _botonAddMini(() => _agregarItemRapido(true), Colors.green),
+                ]
+              ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: "Técnico", prefixIcon: Icon(Icons.person_outline)),
+                    value: _selectedTecnico,
+                    items: _tecnicos.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                    onChanged: readOnly ? null : (v) => setState(() => _selectedTecnico = v),
+                  ),
+                ),
+                if (!readOnly) ...[
+                  const SizedBox(width: 8),
+                  _botonAddMini(() => _agregarItemRapido(false), Colors.orange),
+                ]
+              ],
+            ),
+            const SizedBox(height: 15),
+            // --- CAMBIO AQUÍ: CAJA EXTENDIDA ---
+            TextField(
+              controller: _obsController, 
+              decoration: const InputDecoration(
+                labelText: "Observaciones Generales", 
+                prefixIcon: Icon(Icons.comment_outlined),
+                alignLabelWithHint: true, // Alinea el texto arriba
+              ), 
+              maxLines: 6, // Altura máxima
+              minLines: 3, // Altura mínima
+              readOnly: readOnly
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildListaUsuarios(bool readOnly, bool isDark, {bool compact = false}) {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text("USUARIOS", style: TextStyle(fontWeight: FontWeight.bold)),
+            if (!readOnly) IconButton(icon: const Icon(Icons.add_circle, color: kPrimaryColor), onPressed: _agregarUsuarioRapido)
+          ],
+        ),
+        ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _usuarios.length,
+          separatorBuilder: (_,__) => const SizedBox(height: 8),
+          itemBuilder: (ctx, i) {
+            final u = _usuarios[i];
+            final bool isSelected = i == _usuarioSeleccionadoIndex;
+            return ListTile(
+              tileColor: isSelected ? kPrimaryColor.withOpacity(0.1) : (isDark ? kCardColorDark : Colors.white),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: isSelected ? const BorderSide(color: kPrimaryColor) : BorderSide.none),
+              title: Text(u['nombre'], style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+              leading: Icon(Icons.person, color: isSelected ? kPrimaryColor : Colors.grey),
+              trailing: !readOnly ? IconButton(icon: const Icon(Icons.close, color: Colors.red, size: 18), onPressed: ()=>_borrarUsuarioConConfirmacion(i)) : null,
+              onTap: () => setState(() => _usuarioSeleccionadoIndex = i),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeaderUsuario(int idx, bool readOnly, bool isDark) {
+    final usr = _usuarios[idx];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(color: (isDark?Colors.white:Colors.black).withOpacity(0.05), borderRadius: const BorderRadius.vertical(top: Radius.circular(kRadius))),
+      child: Row(
+        children: [
+          const Icon(Icons.person, size: 18),
+          const SizedBox(width: 10),
+          Expanded(child: Text(usr['nombre'] ?? "", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+          if (!readOnly) IconButton(icon: const Icon(Icons.close, color: Colors.red, size: 18), onPressed: () => _borrarUsuarioConConfirmacion(idx))
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetalleUsuario(int idx, bool readOnly, bool isDark) {
+    Map usr = _usuarios[idx];
+    List fotos = usr['fotos'] ?? [];
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // TITULO SI ESTAMOS EN TABLET
+        if (MediaQuery.of(context).size.width > 600) 
+           Padding(
+             padding: const EdgeInsets.only(bottom: 20),
+             child: Text(usr['nombre'], style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: isDark ? kPrimaryColorDark : kPrimaryColor)),
+           ),
+
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(usr['atendido'] ? "✅ Atendido" : "❌ No Atendido", style: TextStyle(color: usr['atendido'] ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
+          value: usr['atendido'], 
+          activeColor: Colors.green,
+          onChanged: readOnly ? null : (v) => setState(() => usr['atendido'] = v)
+        ),
+        
+        const Divider(),
+        
+        if (usr['atendido']) ...[
+           const Text("LISTA DE TAREAS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+           const SizedBox(height: 10),
+           
+           // --- CHECKLIST CON HORA ---
+           ...kTareasPredefinidas.map((tarea) {
+              Map tareasMap = usr['tareas_map'] ?? {};
+              bool isChecked = tareasMap.containsKey(tarea);
+              String? hora = tareasMap[tarea];
+              
+              return CheckboxListTile(
+                title: Text(tarea),
+                secondary: isChecked ? Text(hora ?? "", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)) : null,
+                value: isChecked,
+                onChanged: readOnly ? null : (val) => _toggleTarea(idx, tarea, val!),
+                activeColor: kPrimaryColor,
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+              );
+           }),
+           
+           const SizedBox(height: 15),
+           Row(
+             children: [
+               Expanded(
+                 child: _ActionButton(
+                   icon: Icons.camera_alt,
+                   text: "${fotos.length} Fotos",
+                   color: isDark ? Colors.blueGrey.shade900 : Colors.blue.shade50,
+                   textColor: Colors.blue,
+                   onTap: () => _tomarFoto(idx),
+                 ),
+               ),
+               const SizedBox(width: 10),
+               Expanded(
+                 child: _ActionButton(
+                   icon: Icons.draw,
+                   text: usr['firma'] != null ? "Firmado" : "Firmar",
+                   color: usr['firma'] != null 
+                      ? (isDark ? Colors.green.shade900 : Colors.green.shade50) 
+                      : (isDark ? Colors.orange.shade900 : Colors.orange.shade50),
+                   textColor: usr['firma'] != null ? Colors.green : Colors.orange,
+                   onTap: () => _abrirFirma(idx),
+                 ),
+               ),
+             ],
+           ),
+
+           // --- GALERÍA DE FOTOS (NUEVO) ---
+           if (fotos.isNotEmpty) ...[
+             const SizedBox(height: 20),
+             const Text("EVIDENCIA FOTOGRÁFICA:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+             const SizedBox(height: 10),
+             Wrap(
+               spacing: 10,
+               runSpacing: 10,
+               children: fotos.map<Widget>((path) {
+                 return ClipRRect(
+                   borderRadius: BorderRadius.circular(8),
+                   child: Image.file(
+                     File(path), 
+                     width: 100, 
+                     height: 100, 
+                     fit: BoxFit.cover,
+                     errorBuilder: (c,e,s) => Container(width: 100, height: 100, color: Colors.grey, child: const Icon(Icons.broken_image)),
+                   ),
+                 );
+               }).toList(),
+             )
+           ]
+
+        ] else
+           TextFormField(
+             initialValue: usr['motivo'],
+             decoration: const InputDecoration(labelText: "Motivo no atención"),
+             readOnly: readOnly,
+             onChanged: (v) => usr['motivo'] = v,
+           ),
+      ],
+    );
+  }
+
+  Widget _buildBotonGuardar(bool readOnly) {
+    if (readOnly) return const SizedBox();
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: _guardarLocalmente,
+        child: Text(widget.reporteEditar != null ? "GUARDAR CAMBIOS" : "GUARDAR VISITA", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
       ),
     );
   }

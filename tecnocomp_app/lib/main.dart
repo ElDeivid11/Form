@@ -489,7 +489,7 @@ class _CircleBtn extends StatelessWidget {
   }
 }
 
-// --- PANTALLA HISTORIAL ---
+// --- PANTALLA HISTORIAL (MODIFICADA CON BORRADO SEGURO) ---
 class PantallaHistorial extends StatefulWidget {
   const PantallaHistorial({super.key});
   @override
@@ -541,9 +541,99 @@ class _PantallaHistorialState extends State<PantallaHistorial> with SingleTicker
     await Navigator.push(context, MaterialPageRoute(builder: (_) => FormularioVisita(reporteEditar: reporte, soloLectura: true)));
   }
 
-  void _borrarReporte(int id) async {
-    await DBHelper().borrarReporteFisico(id);
-    _cargar();
+  // --- FUNCIÓN DE BORRADO SEGURO MODIFICADA ---
+  void _borrarReporte(Map<String, dynamic> reporte) async {
+    final passCtrl = TextEditingController();
+    
+    // 1. Diálogo de Contraseña
+    final bool? autorizado = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Eliminar Reporte"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Ingrese contraseña de administrador para eliminar este reporte de forma permanente (Nube y Local)."),
+            const SizedBox(height: 15),
+            TextField(
+              controller: passCtrl,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: "Contraseña Admin",
+                prefixIcon: Icon(Icons.lock_outline),
+                border: OutlineInputBorder()
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false), 
+            child: const Text("Cancelar")
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red, 
+              foregroundColor: Colors.white
+            ),
+            onPressed: () {
+              // --- CONTRASEÑA AQUÍ (Cámbiala por la que quieras) ---
+              if (passCtrl.text == "Limari.2020") { 
+                Navigator.pop(context, true);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Contraseña incorrecta"), backgroundColor: Colors.red)
+                );
+              }
+            },
+            child: const Text("ELIMINAR"),
+          ),
+        ],
+      ),
+    );
+
+    if (autorizado != true) return;
+
+    // 2. Lógica de Borrado
+    _mostrarLoading("Eliminando...");
+    
+    // Si el reporte ya fue enviado (tiene server_id), intentamos borrarlo del servidor primero
+    bool borradoRemotoExitoso = true;
+    if (reporte['server_id'] != null && reporte['server_id'] > 0) {
+       borradoRemotoExitoso = await ApiService.eliminarReporteRemoto(reporte['server_id']);
+    }
+
+    if (!mounted) return;
+    Navigator.pop(context); // Cerrar loading
+
+    if (borradoRemotoExitoso) {
+      // Si se borró de la nube (o era local y no estaba en nube), lo borramos de la tablet
+      await DBHelper().borrarReporteFisico(reporte['id']);
+      _cargar(); // Recargar lista
+      _mostrarSnack("Reporte eliminado correctamente", Colors.green);
+    } else {
+      _mostrarSnack("Error: No se pudo eliminar del servidor. Verifique conexión.", Colors.red);
+    }
+  }
+
+  void _mostrarLoading(String texto) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [const CircularProgressIndicator(), const SizedBox(width: 20), Text(texto)],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _mostrarSnack(String texto, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: color, content: Text(texto)));
   }
 
   @override
@@ -588,9 +678,11 @@ class _PantallaHistorialState extends State<PantallaHistorial> with SingleTicker
                   IconButton(icon: const Icon(Icons.send, color: Colors.green), onPressed: () => _enviarReporte(rep)),
                 ] else
                   IconButton(icon: const Icon(Icons.visibility, color: Colors.grey), onPressed: () => _verReporte(rep)),
+                
+                // --- BOTÓN ELIMINAR ACTUALIZADO ---
                 IconButton(
                   icon: const Icon(Icons.delete, color: Colors.grey),
-                  onPressed: () { _borrarReporte(rep['id']); },
+                  onPressed: () { _borrarReporte(rep); }, // Pasamos el objeto completo 'rep'
                 ),
               ],
             ),

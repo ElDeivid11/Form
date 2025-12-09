@@ -28,8 +28,8 @@ class ApiService {
       String baseUrl = await _getBaseUrl();
       print("Intentando conectar a $baseUrl...");
       
-      final respClientes = await http.get(Uri.parse('$baseUrl/clientes')).timeout(const Duration(seconds: 30));
-      final respTecnicos = await http.get(Uri.parse('$baseUrl/tecnicos')).timeout(const Duration(seconds: 30));
+      final respClientes = await http.get(Uri.parse('$baseUrl/clientes')).timeout(const Duration(seconds: 90));
+      final respTecnicos = await http.get(Uri.parse('$baseUrl/tecnicos')).timeout(const Duration(seconds: 90));
 
       if (respClientes.statusCode == 200 && respTecnicos.statusCode == 200) {
         List cli = json.decode(respClientes.body);
@@ -96,6 +96,7 @@ class ApiService {
       var response = await request.send();
       
       if (response.statusCode == 200) {
+        // Intentar leer server_id si viene en la respuesta (opcional para futuras mejoras)
         return true;
       } else {
         final respStr = await response.stream.bytesToString();
@@ -104,6 +105,19 @@ class ApiService {
       }
     } catch (e) {
       print("Error Subida: $e");
+      return false;
+    }
+  }
+
+  // 3. ELIMINAR REPORTE DEL SERVIDOR (NUEVO)
+  static Future<bool> eliminarReporteRemoto(int serverId) async {
+    try {
+      String baseUrl = await _getBaseUrl();
+      // Asume que tu API tiene DELETE /reporte/{id}
+      final response = await http.delete(Uri.parse('$baseUrl/reporte/$serverId'));
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Error eliminando: $e");
       return false;
     }
   }

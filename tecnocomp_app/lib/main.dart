@@ -163,26 +163,51 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _sincronizar() async {
     _mostrarLoading("Sincronizando...");
-    bool ok = await ApiService.sincronizarDatos();
+    bool resultado = await ApiService.sincronizarDatos();
+    
     if (!mounted) return;
     Navigator.pop(context);
-    if (ok) {
+    
+    if (resultado) {
       _mostrarSnack("Datos actualizados correctamente", Colors.green);
     } else {
       _mostrarConfigurarIP();
     }
   }
 
-  void _mostrarConfigurarIP() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text("Error de conexión. Verifica la IP."),
-        backgroundColor: Colors.red,
-        action: SnackBarAction(
-          label: "CONFIGURAR",
-          textColor: Colors.white,
-          onPressed: _abrirConfiguracion,
+  void _mostrarConfigurarIP({String? mensajeError}) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Error de Sincronización"),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("No se pudo conectar correctamente con el servidor."),
+              const SizedBox(height: 10),
+              if (mensajeError != null)
+                Text(
+                  "Detalle: $mensajeError",
+                  style: const TextStyle(color: Colors.red, fontSize: 12),
+                ),
+            ],
+          ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx), 
+            child: const Text("Cerrar")
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _abrirConfiguracion();
+            },
+            child: const Text("Configurar IP"),
+          )
+        ],
       ),
     );
   }
@@ -693,7 +718,7 @@ class _PantallaHistorialState extends State<PantallaHistorial> with SingleTicker
   }
 }
 
-// --- PANTALLA GESTIÓN DE DATOS ---
+// --- PANTALLA GESTIÓN DE DATOS (CON BORRADO NUBE+LOCAL) ---
 class PantallaGestionDatos extends StatefulWidget {
   const PantallaGestionDatos({super.key});
   @override
@@ -724,9 +749,160 @@ class _PantallaGestionDatosState extends State<PantallaGestionDatos> with Single
     setState(() { _clientes = cls; _tecnicos = tcs; _usuariosPorCliente = usuariosMap; });
   }
 
-  void _borrarCliente(String nombre) async { await DBHelper().eliminarCliente(nombre); _cargarDatos(); }
-  void _borrarTecnico(String nombre) async { await DBHelper().eliminarTecnico(nombre); _cargarDatos(); }
-  void _borrarUsuario(String nombreUsuario, String cliente) async { await DBHelper().eliminarUsuarioFrecuente(nombreUsuario, cliente); _cargarDatos(); }
+  // Helper para mostrar snacks
+  void _mostrarSnack(String texto, Color color) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: color, content: Text(texto)));
+  }
+
+  // Helper para loading
+  void _mostrarLoading(String texto) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [const CircularProgressIndicator(), const SizedBox(width: 20), Text(texto)],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 1. BORRAR CLIENTE (CON CONTRASEÑA Y NUBE)
+  void _borrarCliente(String nombre) async {
+    final passCtrl = TextEditingController();
+    
+    final bool? autorizado = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Eliminar Cliente"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("¿Eliminar a '$nombre' DE TODOS LOS DISPOSITIVOS?\nSe requiere internet."),
+            const SizedBox(height: 10),
+            TextField(
+              controller: passCtrl,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: "Contraseña Admin",
+                prefixIcon: Icon(Icons.lock),
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false), 
+            child: const Text("Cancelar")
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () {
+              if (passCtrl.text == "20259056") {
+                Navigator.pop(context, true);
+              } else {
+                _mostrarSnack("Contraseña incorrecta", Colors.red);
+              }
+            },
+            child: const Text("ELIMINAR"),
+          ),
+        ],
+      ),
+    );
+
+    if (autorizado == true) {
+      _mostrarLoading("Eliminando de la nube...");
+      
+      // 1. Intentar borrar en Nube
+      bool nubeOk = await ApiService.eliminarClienteRemoto(nombre);
+      
+      if (!mounted) return;
+      Navigator.pop(context); // Cerrar loading
+
+      if (nubeOk) {
+        // 2. Si nube OK, borrar local
+        await DBHelper().eliminarCliente(nombre);
+        _cargarDatos();
+        _mostrarSnack("Cliente eliminado de Nube y Local", Colors.green);
+      } else {
+        _mostrarSnack("Error: No se pudo borrar de la nube. Verifique internet.", Colors.red);
+      }
+    }
+  }
+
+  // 2. BORRAR TÉCNICO (SOLO CONFIRMACIÓN Y NUBE)
+  void _borrarTecnico(String nombre) async {
+    final bool? confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("¿Eliminar Técnico?"),
+        content: Text("Se eliminará a '$nombre' de la base de datos global."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancelar")),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Eliminar", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar == true) {
+      _mostrarLoading("Eliminando...");
+      bool nubeOk = await ApiService.eliminarTecnicoRemoto(nombre);
+      
+      if (!mounted) return;
+      Navigator.pop(context);
+
+      if (nubeOk) {
+        await DBHelper().eliminarTecnico(nombre);
+        _cargarDatos();
+        _mostrarSnack("Técnico eliminado correctamente", Colors.green);
+      } else {
+        _mostrarSnack("Error de conexión con el servidor", Colors.red);
+      }
+    }
+  }
+
+  // 3. BORRAR USUARIO (SOLO CONFIRMACIÓN Y NUBE)
+  void _borrarUsuario(String nombreUsuario, String cliente) async {
+    final bool? confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("¿Eliminar Usuario?"),
+        content: Text("Se eliminará a '$nombreUsuario' de la lista global."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancelar")),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Eliminar", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar == true) {
+      _mostrarLoading("Eliminando...");
+      bool nubeOk = await ApiService.eliminarUsuarioRemoto(nombreUsuario, cliente);
+      
+      if (!mounted) return;
+      Navigator.pop(context);
+
+      if (nubeOk) {
+        await DBHelper().eliminarUsuarioFrecuente(nombreUsuario, cliente);
+        _cargarDatos();
+        _mostrarSnack("Usuario eliminado", Colors.green);
+      } else {
+        _mostrarSnack("Error al borrar en servidor", Colors.red);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1202,6 +1378,15 @@ class _FormularioVisitaState extends State<FormularioVisita> {
   // --- WIDGETS REUTILIZABLES ---
 
   Widget _buildGeneralCard(bool readOnly, bool isDark) {
+    // Detectamos si estamos en modo edición (si hay un reporte cargado)
+    final bool esEdicion = widget.reporteEditar != null;
+    
+    // Bloqueamos los campos si es solo lectura (historial) O si es edición
+    final bool bloquearCamposClave = readOnly || esEdicion;
+
+    // Color de fondo para campos deshabilitados (visual feedback)
+    final Color? disabledColor = isDark ? Colors.white10 : Colors.grey[200];
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -1210,42 +1395,67 @@ class _FormularioVisitaState extends State<FormularioVisita> {
           children: [
             const Text("INFORMACIÓN GENERAL", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimaryColor)),
             const SizedBox(height: 15),
+            
+            // --- CAMPO CLIENTE ---
             Row(
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     isExpanded: true,
-                    decoration: const InputDecoration(labelText: "Cliente", prefixIcon: Icon(Icons.business_outlined)),
+                    decoration: InputDecoration(
+                      labelText: "Cliente", 
+                      prefixIcon: const Icon(Icons.business_outlined),
+                      // Si está bloqueado, ponemos un fondo grisáceo
+                      filled: bloquearCamposClave,
+                      fillColor: bloquearCamposClave ? disabledColor : null,
+                    ),
                     value: _selectedCliente,
                     items: _clientes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    onChanged: readOnly ? null : _alSeleccionarCliente,
+                    // ALERTA: Si está bloqueado, onChanged es null (esto deshabilita el control)
+                    onChanged: bloquearCamposClave ? null : _alSeleccionarCliente,
+                    // Estilo del texto cuando está deshabilitado
+                    disabledHint: Text(_selectedCliente ?? "", style: TextStyle(color: isDark ? Colors.white70 : Colors.black87)),
                   ),
                 ),
-                if (!readOnly) ...[
+                // Solo mostramos el botón de agregar si NO está bloqueado
+                if (!bloquearCamposClave) ...[
                   const SizedBox(width: 8),
                   _botonAddMini(() => _agregarItemRapido(true), Colors.green),
                 ]
               ],
             ),
+            
             const SizedBox(height: 15),
+            
+            // --- CAMPO TÉCNICO ---
             Row(
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     isExpanded: true,
-                    decoration: const InputDecoration(labelText: "Técnico", prefixIcon: Icon(Icons.person_outline)),
+                    decoration: InputDecoration(
+                      labelText: "Técnico", 
+                      prefixIcon: const Icon(Icons.person_outline),
+                      filled: bloquearCamposClave,
+                      fillColor: bloquearCamposClave ? disabledColor : null,
+                    ),
                     value: _selectedTecnico,
                     items: _tecnicos.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    onChanged: readOnly ? null : (v) => setState(() => _selectedTecnico = v),
+                    // ALERTA: Si está bloqueado, onChanged es null
+                    onChanged: bloquearCamposClave ? null : (v) => setState(() => _selectedTecnico = v),
+                    disabledHint: Text(_selectedTecnico ?? "", style: TextStyle(color: isDark ? Colors.white70 : Colors.black87)),
                   ),
                 ),
-                if (!readOnly) ...[
+                if (!bloquearCamposClave) ...[
                   const SizedBox(width: 8),
                   _botonAddMini(() => _agregarItemRapido(false), Colors.orange),
                 ]
               ],
             ),
+            
             const SizedBox(height: 15),
+            
+            // --- OBSERVACIONES (Siempre editable salvo en solo lectura) ---
             TextField(
               controller: _obsController, 
               decoration: const InputDecoration(
@@ -1255,7 +1465,7 @@ class _FormularioVisitaState extends State<FormularioVisita> {
               ), 
               maxLines: 6,
               minLines: 3,
-              readOnly: readOnly
+              readOnly: readOnly // Esto se mantiene igual (solo bloqueado en historial)
             ),
           ],
         ),

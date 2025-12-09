@@ -121,4 +121,45 @@ class ApiService {
       return false;
     }
   }
+  // ... (código anterior igual)
+
+  // 4. ELIMINAR CLIENTE REMOTO
+  static Future<bool> eliminarClienteRemoto(String nombre) async {
+    try {
+      String baseUrl = await _getBaseUrl();
+      // Usamos Uri.encodeComponent para manejar espacios en nombres (ej: "Juan Perez")
+      final url = '$baseUrl/cliente/${Uri.encodeComponent(nombre)}';
+      final response = await http.delete(Uri.parse(url));
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Error borrando cliente remoto: $e");
+      return false;
+    }
+  }
+
+  // 5. ELIMINAR TÉCNICO REMOTO
+  static Future<bool> eliminarTecnicoRemoto(String nombre) async {
+    try {
+      String baseUrl = await _getBaseUrl();
+      final url = '$baseUrl/tecnico/${Uri.encodeComponent(nombre)}';
+      final response = await http.delete(Uri.parse(url));
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Error borrando técnico remoto: $e");
+      return false;
+    }
+  }
+
+  // 6. ELIMINAR USUARIO REMOTO
+  static Future<bool> eliminarUsuarioRemoto(String nombre, String cliente) async {
+    try {
+      String baseUrl = await _getBaseUrl();
+      final url = '$baseUrl/usuario/${Uri.encodeComponent(cliente)}/${Uri.encodeComponent(nombre)}';
+      final response = await http.delete(Uri.parse(url));
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Error borrando usuario remoto: $e");
+      return false;
+    }
+  }
 }

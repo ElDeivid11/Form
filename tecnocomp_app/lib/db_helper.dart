@@ -16,18 +16,44 @@ class DBHelper {
   }
 
   Future<Database> _initDB() async {
-    // CAMBIO V6: Nueva versión para incluir server_id
-    String path = join(await getDatabasesPath(), 'tecnocomp_v6.db');
+    // CAMBIO IMPORTANTE: Cambié el nombre a 'tecnocomp_v7.db' para forzar 
+    // a que la app cree una base de datos nueva y limpia con todas las tablas.
+    String path = join(await getDatabasesPath(), 'tecnocomp_v7.db');
+    
     return await openDatabase(
       path,
       version: 1,
       onCreate: (db, version) async {
-        // ... (tablas clientes, tecnicos, usuarios iguales) ...
+        // --- 1. TABLA CLIENTES (Esta era la que faltaba y daba error) ---
+        await db.execute('''
+          CREATE TABLE clientes(
+            nombre TEXT PRIMARY KEY, 
+            email TEXT
+          )
+        ''');
+
+        // --- 2. TABLA TÉCNICOS ---
+        await db.execute('''
+          CREATE TABLE tecnicos(
+            nombre TEXT PRIMARY KEY, 
+            email TEXT
+          )
+        ''');
+
+        // --- 3. TABLA USUARIOS FRECUENTES ---
+        await db.execute('''
+          CREATE TABLE usuarios_frecuentes(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            nombre TEXT, 
+            cliente TEXT
+          )
+        ''');
         
+        // --- 4. TABLA REPORTES ---
         await db.execute('''
           CREATE TABLE reportes(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            server_id INTEGER,  -- <--- NUEVO CAMPO
+            server_id INTEGER,
             cliente TEXT,
             tecnico TEXT,
             obs TEXT,
@@ -41,15 +67,12 @@ class DBHelper {
     );
   }
 
-  // --- Actualizar funciones de Reportes ---
-  
-  // Agregar server_id al insertar (si lo tenemos, aunque al inicio es null)
+  // --- REPORTES ---
   Future<int> insertarReporte(Map<String, dynamic> row) async {
     final db = await database;
     return await db.insert('reportes', row);
   }
 
-  // Función para guardar el server_id cuando la subida es exitosa
   Future<void> actualizarServerId(int localId, int serverId) async {
     final db = await database;
     await db.update('reportes', {'server_id': serverId, 'enviado': 1}, where: 'id = ?', whereArgs: [localId]);
@@ -84,7 +107,7 @@ class DBHelper {
     return null;
   }
 
-  // --- TÉCNICOS (ACTUALIZADO) ---
+  // --- TÉCNICOS ---
   Future<void> agregarTecnicoLocal(String nombre, String email) async {
     final db = await database;
     await db.insert('tecnicos', {'nombre': nombre, 'email': email}, conflictAlgorithm: ConflictAlgorithm.replace);
@@ -96,7 +119,6 @@ class DBHelper {
     return res.map((e) => e['nombre'] as String).toList();
   }
 
-  // NUEVO: OBTENER EMAIL TÉCNICO
   Future<String?> getTecnicoEmail(String nombre) async {
     final db = await database;
     final res = await db.query('tecnicos', columns: ['email'], where: 'nombre = ?', whereArgs: [nombre]);
@@ -126,23 +148,60 @@ class DBHelper {
     await db.delete('usuarios_frecuentes', where: 'nombre = ? AND cliente = ?', whereArgs: [nombre, cliente]);
   }
 
-  // --- SINCRONIZACIÓN ---
+  // --- SINCRONIZACIÓN (ROBUSTA) ---
   Future<void> guardarConfiguracion(List clientes, List tecnicos) async {
     final db = await database;
     await db.transaction((txn) async {
+      // 1. Guardar Clientes
       for (var c in clientes) {
-        await txn.rawInsert('INSERT OR IGNORE INTO clientes(nombre, email) VALUES(?, ?)', [c[0], c[1]]);
+        String nombre = "";
+        String email = "";
+
+        if (c is List && c.isNotEmpty) {
+          nombre = c[0].toString();
+          if (c.length > 1) email = c[1].toString();
+        } 
+        else if (c is Map) {
+          nombre = c['nombre'] ?? "";
+          email = c['email'] ?? "";
+        }
+
+        if (nombre.isNotEmpty) {
+          await txn.rawInsert(
+            'INSERT OR REPLACE INTO clientes(nombre, email) VALUES(?, ?)', 
+            [nombre, email]
+          );
+        }
       }
+
+      // 2. Guardar Técnicos
       for (var t in tecnicos) {
-        // Nota: La sincronización simple solo trae nombres por ahora, 
-        // pero mantendremos la compatibilidad.
-        await txn.rawInsert('INSERT OR IGNORE INTO tecnicos(nombre) VALUES(?)', [t]);
+        String nombre = "";
+        String email = ""; // Si viniera email en el futuro
+        
+        if (t is String) {
+          nombre = t;
+        }
+        else if (t is List && t.isNotEmpty) {
+          nombre = t[0].toString();
+          // if (t.length > 1) email = t[1].toString();
+        }
+        else if (t is Map) {
+            nombre = t['nombre'] ?? "";
+            email = t['email'] ?? "";
+        }
+
+        if (nombre.isNotEmpty) {
+           await txn.rawInsert(
+             'INSERT OR REPLACE INTO tecnicos(nombre, email) VALUES(?, ?)', 
+             [nombre, email]
+           );
+        }
       }
     });
   }
 
-
-
+  // --- FUNCIONES DE UPDATE Y DELETE ---
   Future<int> updateReporte(int id, Map<String, dynamic> row) async {
     final db = await database;
     return await db.update('reportes', row, where: 'id = ?', whereArgs: [id]);

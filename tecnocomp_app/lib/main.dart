@@ -579,7 +579,7 @@ class _PantallaHistorialState extends State<PantallaHistorial> with SingleTicker
             ),
             onPressed: () {
               // --- CONTRASEÑA AQUÍ (Cámbiala por la que quieras) ---
-              if (passCtrl.text == "Limari.2020") { 
+              if (passCtrl.text == "20259056") { 
                 Navigator.pop(context, true);
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(

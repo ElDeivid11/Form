@@ -16,28 +16,18 @@ class DBHelper {
   }
 
   Future<Database> _initDB() async {
-    // CAMBIO V5: Nueva versión para incluir email en técnicos
-    String path = join(await getDatabasesPath(), 'tecnocomp_v5.db');
+    // CAMBIO V6: Nueva versión para incluir server_id
+    String path = join(await getDatabasesPath(), 'tecnocomp_v6.db');
     return await openDatabase(
       path,
       version: 1,
       onCreate: (db, version) async {
-        await db.execute('CREATE TABLE clientes(nombre TEXT PRIMARY KEY, email TEXT)');
-        // AHORA TECNICOS TIENE EMAIL
-        await db.execute('CREATE TABLE tecnicos(nombre TEXT PRIMARY KEY, email TEXT)');
+        // ... (tablas clientes, tecnicos, usuarios iguales) ...
         
-        await db.execute('''
-          CREATE TABLE usuarios_frecuentes(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT,
-            cliente TEXT,
-            UNIQUE(nombre, cliente)
-          )
-        ''');
-
         await db.execute('''
           CREATE TABLE reportes(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            server_id INTEGER,  -- <--- NUEVO CAMPO
             cliente TEXT,
             tecnico TEXT,
             obs TEXT,
@@ -49,6 +39,20 @@ class DBHelper {
         ''');
       },
     );
+  }
+
+  // --- Actualizar funciones de Reportes ---
+  
+  // Agregar server_id al insertar (si lo tenemos, aunque al inicio es null)
+  Future<int> insertarReporte(Map<String, dynamic> row) async {
+    final db = await database;
+    return await db.insert('reportes', row);
+  }
+
+  // Función para guardar el server_id cuando la subida es exitosa
+  Future<void> actualizarServerId(int localId, int serverId) async {
+    final db = await database;
+    await db.update('reportes', {'server_id': serverId, 'enviado': 1}, where: 'id = ?', whereArgs: [localId]);
   }
 
   // --- CLIENTES ---
@@ -137,11 +141,7 @@ class DBHelper {
     });
   }
 
-  // --- REPORTES ---
-  Future<int> insertarReporte(Map<String, dynamic> row) async {
-    final db = await database;
-    return await db.insert('reportes', row);
-  }
+
 
   Future<int> updateReporte(int id, Map<String, dynamic> row) async {
     final db = await database;

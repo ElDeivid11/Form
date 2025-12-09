@@ -140,7 +140,7 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// --- PANTALLA DASHBOARD ---
+// --- PANTALLA DASHBOARD (NUEVO DISEÑO) ---
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
   @override
@@ -250,112 +250,119 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = isDark ? kPrimaryColorDark : kPrimaryColor;
+    // Detectar si es Tablet (Ancho > 600)
+    final bool isTablet = MediaQuery.of(context).size.width > 600;
     
     return Scaffold(
-      body: Stack(
-        children: [
-          // Fondo
-          Container(
-            height: 250,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft, 
-                end: Alignment.bottomRight, 
-                colors: isDark 
-                  ? [const Color(0xFF2C2C2C), Colors.black] 
-                  : [kPrimaryColor, kSecondaryColor], 
-              ),
-              borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(40), bottomRight: Radius.circular(40)),
-            ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: isDark 
+              ? [const Color(0xFF1E1E1E), const Color(0xFF121212)] 
+              : [kPrimaryColor.withOpacity(0.05), Colors.white],
           ),
-          SafeArea(
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text("Bienvenido,", style: TextStyle(color: Colors.white70, fontSize: 14)),
-                          Text("Panel Técnico", style: TextStyle(color: isDark ? kPrimaryColorDark : Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          IconButton(
-                            icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode, color: Colors.white),
-                            onPressed: () => themeNotifier.value = isDark ? ThemeMode.light : ThemeMode.dark,
+                // 1. CABECERA MODERNA
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Panel Técnico",
+                          style: TextStyle(
+                            fontSize: 28, 
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? kPrimaryColorDark : const Color(0xFF2D3142)
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.settings, color: Colors.white),
-                            onPressed: _abrirConfiguracion,
-                            tooltip: "Configurar IP",
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          "Gestión de Visitas en Terreno",
+                          style: TextStyle(
+                            fontSize: 16, 
+                            color: isDark ? Colors.grey : Colors.grey[600]
                           ),
-                        ],
-                      )
-                    ],
-                  ),
+                        ),
+                      ],
+                    ),
+                    // BOTONES DE ACCIÓN RÁPIDA (Config y Tema)
+                    Row(
+                      children: [
+                        _CircleBtn(
+                          icon: isDark ? Icons.light_mode : Icons.dark_mode,
+                          onTap: () => themeNotifier.value = isDark ? ThemeMode.light : ThemeMode.dark,
+                        ),
+                        const SizedBox(width: 10),
+                        _CircleBtn(
+                          icon: Icons.settings,
+                          onTap: _abrirConfiguracion,
+                        ),
+                      ],
+                    )
+                  ],
                 ),
-                const SizedBox(height: 10),
+                
+                const SizedBox(height: 30),
+                
+                // 2. GRID DE OPCIONES (Adaptable)
                 Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: GridView.count(
+                    crossAxisCount: isTablet ? 2 : 1, // 2 columnas en Tablet, 1 en Celular
+                    mainAxisSpacing: 20,
+                    crossAxisSpacing: 20,
+                    childAspectRatio: isTablet ? 1.5 : 2.0, // Tarjetas más apaisadas en tablet
                     children: [
-                      _DashboardCard(
-                        icon: Icons.add_location_alt_rounded, 
-                        title: "Nueva Visita", 
-                        subtitle: "Crear reporte offline", 
-                        color: isDark ? kCardColorDark : Colors.white,
-                        textColor: isDark ? Colors.white : Colors.black87,
-                        iconColor: primaryColor,
+                      // TARJETA 1: NUEVA VISITA (Destacada)
+                      _MenuCard(
+                        title: "Nueva Visita",
+                        subtitle: "Iniciar reporte offline",
+                        icon: Icons.add_location_alt_rounded,
+                        color: kPrimaryColor,
                         onTap: () async {
                           await Navigator.push(context, MaterialPageRoute(builder: (_) => const FormularioVisita()));
                           _cargarPendientes();
-                        }
+                        },
                       ),
-                      const SizedBox(height: 15),
-                      _DashboardCard(
-                        icon: Icons.history_edu_rounded, 
-                        title: "Historial", 
-                        subtitle: "$pendientes pendientes de envío", 
-                        color: pendientes > 0 
-                            ? (isDark ? const Color(0xFFEF6C00) : const Color(0xFFFF9800)) 
-                            : (isDark ? kCardColorDark : Colors.white),
-                        textColor: pendientes > 0 ? Colors.white : (isDark ? Colors.white : Colors.black87),
-                        iconColor: pendientes > 0 ? Colors.white : primaryColor,
-                        isPrimary: pendientes > 0,
+                      
+                      // TARJETA 2: HISTORIAL (Con Badge)
+                      _MenuCard(
+                        title: "Historial / Envíos",
+                        subtitle: pendientes > 0 ? "$pendientes por subir" : "Todo sincronizado",
+                        icon: Icons.history_edu_rounded,
+                        color: pendientes > 0 ? Colors.orange : Colors.green,
+                        isAlert: pendientes > 0,
                         onTap: () async {
                           await Navigator.push(context, MaterialPageRoute(builder: (_) => const PantallaHistorial()));
                           _cargarPendientes();
-                        }
+                        },
                       ),
-                      const SizedBox(height: 15),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _DashboardSmallCard(
-                              icon: Icons.sync, 
-                              title: "Sincronizar", 
-                              color: isDark ? kCardColorDark : Colors.blueGrey.shade50,
-                              iconColor: isDark ? Colors.grey : Colors.blueGrey,
-                              onTap: _sincronizar
-                            ),
-                          ),
-                          const SizedBox(width: 15),
-                          Expanded(
-                            child: _DashboardSmallCard(
-                              icon: Icons.storage, 
-                              title: "Gestión Datos", 
-                              color: isDark ? kCardColorDark : Colors.blueGrey.shade50,
-                              iconColor: isDark ? Colors.grey : Colors.blueGrey,
-                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PantallaGestionDatos())),
-                            ),
-                          ),
-                        ],
+                      
+                      // TARJETA 3: SINCRONIZAR
+                      _MenuCard(
+                        title: "Sincronizar",
+                        subtitle: "Actualizar Clientes/Tecnicos",
+                        icon: Icons.cloud_sync_rounded,
+                        color: Colors.blueGrey,
+                        onTap: _sincronizar,
+                      ),
+                      
+                      // TARJETA 4: GESTIÓN DATOS
+                      _MenuCard(
+                        title: "Base de Datos",
+                        subtitle: "Ver Clientes y Usuarios",
+                        icon: Icons.storage_rounded,
+                        color: Colors.indigo,
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PantallaGestionDatos())),
                       ),
                     ],
                   ),
@@ -363,102 +370,126 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
-class _DashboardCard extends StatelessWidget {
-  final IconData icon;
+// --- WIDGETS AUXILIARES DEL DASHBOARD ---
+
+class _MenuCard extends StatelessWidget {
   final String title;
   final String subtitle;
+  final IconData icon;
   final Color color;
-  final Color textColor;
-  final Color iconColor;
-  final bool isPrimary;
-  final VoidCallback? onTap;
+  final bool isAlert;
+  final VoidCallback onTap;
 
-  const _DashboardCard({
-    required this.icon, required this.title, required this.subtitle, 
-    required this.color, required this.textColor, required this.iconColor, 
-    this.isPrimary = false, this.onTap
+  const _MenuCard({
+    required this.title, required this.subtitle, required this.icon, 
+    required this.color, required this.onTap, this.isAlert = false
   });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(kRadius),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(kRadius),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isPrimary ? Colors.white24 : iconColor.withOpacity(0.1), 
-                borderRadius: BorderRadius.circular(12)
-              ),
-              child: Icon(icon, color: iconColor, size: 30),
-            ),
-            const SizedBox(width: 20),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.15),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              )
+            ],
+            border: isAlert ? Border.all(color: color, width: 2) : null,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(25.0),
+            child: Row(
               children: [
-                Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
-                Text(subtitle, style: TextStyle(fontSize: 12, color: textColor.withOpacity(0.7))),
+                // Icono grande
+                Container(
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Icon(icon, color: color, size: 36),
+                ),
+                const SizedBox(width: 20),
+                // Texto
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 20, 
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black87
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 14, 
+                          color: isAlert ? color : Colors.grey,
+                          fontWeight: isAlert ? FontWeight.bold : FontWeight.normal
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Flecha
+                Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey.withOpacity(0.3))
               ],
             ),
-            const Spacer(),
-            Icon(Icons.arrow_forward_ios_rounded, size: 16, color: textColor.withOpacity(0.3))
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _DashboardSmallCard extends StatelessWidget {
+class _CircleBtn extends StatelessWidget {
   final IconData icon;
-  final String title;
-  final Color color;
-  final Color iconColor;
   final VoidCallback onTap;
-
-  const _DashboardSmallCard({required this.icon, required this.title, required this.color, required this.iconColor, required this.onTap});
+  const _CircleBtn({required this.icon, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(kRadius),
+      borderRadius: BorderRadius.circular(50),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(kRadius),
-          border: isDark ? null : Border.all(color: Colors.black.withOpacity(0.05)),
+          color: Theme.of(context).cardColor,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)
+          ]
         ),
-        child: Column(
-          children: [
-            Icon(icon, color: iconColor, size: 28),
-            const SizedBox(height: 8),
-            Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: iconColor)),
-          ],
-        ),
+        child: Icon(icon, size: 24, color: Theme.of(context).iconTheme.color),
       ),
     );
   }
 }
 
-// --- PANTALLA HISTORIAL (Sin cambios mayores, solo referencias) ---
+// --- PANTALLA HISTORIAL ---
 class PantallaHistorial extends StatefulWidget {
   const PantallaHistorial({super.key});
   @override
@@ -739,7 +770,6 @@ class _FormularioVisitaState extends State<FormularioVisita> {
           children: [
             TextField(controller: controller, decoration: const InputDecoration(labelText: "Nombre"), textCapitalization: TextCapitalization.words),
             const SizedBox(height: 10),
-            // --- AHORA PIDE EMAIL SIEMPRE (CLIENTE O TÉCNICO) ---
             TextField(
               controller: emailController, 
               decoration: const InputDecoration(labelText: "Email para reportes"), 
@@ -762,7 +792,6 @@ class _FormularioVisitaState extends State<FormularioVisita> {
                    await DBHelper().agregarClienteLocal(nombre, emailController.text);
                    _alSeleccionarCliente(nombre);
                 } else {
-                   // Guardamos también el email del técnico
                    await DBHelper().agregarTecnicoLocal(nombre, emailController.text);
                    setState(() => _selectedTecnico = nombre);
                 }
@@ -796,7 +825,6 @@ class _FormularioVisitaState extends State<FormularioVisita> {
             onPressed: () async {
               final nombre = controller.text.trim();
               if (nombre.isNotEmpty) {
-                // VALIDACIÓN: No permitir números en Usuario
                 if (!_validarTextoSinNumeros(nombre)) {
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Nombre inválido. Solo letras."), backgroundColor: Colors.red));
                   return;
@@ -811,9 +839,9 @@ class _FormularioVisitaState extends State<FormularioVisita> {
                     'motivo': '', 
                     'fotos': [], 
                     'firma': null,
-                    'tareas_map': {} // Mapa vacio de tareas
+                    'tareas_map': {}
                   });
-                  _usuarioSeleccionadoIndex = _usuarios.length - 1; // Seleccionar el nuevo
+                  _usuarioSeleccionadoIndex = _usuarios.length - 1;
                 });
                 Navigator.pop(ctx);
               }
@@ -836,7 +864,6 @@ class _FormularioVisitaState extends State<FormularioVisita> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar")),
           TextButton(onPressed: () async {
-              // No lo borramos de la DB de frecuentes, solo del reporte actual
               setState(() {
                  _usuarios.removeAt(index);
                  if (_usuarioSeleccionadoIndex >= _usuarios.length) {
@@ -866,7 +893,7 @@ class _FormularioVisitaState extends State<FormularioVisita> {
           _usuarios = usersGuardados.map((nombre) => {
             'nombre': nombre, 'atendido': true, 'trabajo': '', 'motivo': '', 'fotos': [], 'firma': null, 'tareas_map': {}
           }).toList();
-          _usuarioSeleccionadoIndex = 0; // Seleccionar el primero por defecto
+          _usuarioSeleccionadoIndex = 0;
         });
       }
     }
@@ -879,7 +906,6 @@ class _FormularioVisitaState extends State<FormularioVisita> {
       Map tareasMap = _usuarios[indexUsuario]['tareas_map'] ?? {};
       
       if (valor) {
-        // Guardamos la hora actual HH:MM
         String hora = DateTime.now().toString().substring(11, 16);
         tareasMap[tarea] = hora;
       } else {
@@ -887,14 +913,10 @@ class _FormularioVisitaState extends State<FormularioVisita> {
       }
       _usuarios[indexUsuario]['tareas_map'] = tareasMap;
 
-      // ACTUALIZAR EL STRING 'trabajo' PARA COMPATIBILIDAD CON PDF
-      // Ejemplo: "Limpieza (10:00), Formateo (10:30)"
       List<String> partes = [];
       tareasMap.forEach((k, v) {
         partes.add("$k ($v)");
       });
-      // Si hay texto manual previo que no esté en tareas, podríamos perderlo, 
-      // así que asumimos que el checklist manda. O concatenamos un campo 'extra'.
       _usuarios[indexUsuario]['trabajo'] = partes.join(", ");
     });
   }
@@ -916,7 +938,6 @@ class _FormularioVisitaState extends State<FormularioVisita> {
   void _abrirFirma(int index) {
     if (widget.soloLectura) return;
     
-    // DETECCIÓN DE TABLET para ajustar tamaño de firma
     final isTablet = MediaQuery.of(context).size.width > 600;
     final double signatureWidth = isTablet ? 600 : 300;
     final double signatureHeight = isTablet ? 400 : 200;
@@ -933,13 +954,13 @@ class _FormularioVisitaState extends State<FormularioVisita> {
           child: Container(
             decoration: BoxDecoration(
               border: Border.all(color: Colors.grey.shade400),
-              color: Colors.grey[200], // Fondo gris suave para que se vea el área
+              color: Colors.grey[200],
             ),
             child: Signature(
               controller: _controller, 
               width: signatureWidth,
               height: signatureHeight,
-              backgroundColor: Colors.transparent // Importante
+              backgroundColor: Colors.transparent
             ),
           ),
         ),
@@ -973,7 +994,7 @@ class _FormularioVisitaState extends State<FormularioVisita> {
       'cliente': _selectedCliente,
       'tecnico': _selectedTecnico,
       'obs': _obsController.text,
-      'datos_usuarios': json.encode(_usuarios), // Aquí va el mapa con 'tareas_map' incluido
+      'datos_usuarios': json.encode(_usuarios),
       'fecha_creacion': DateTime.now().toString(),
       'firma_path': null 
     };
@@ -1061,8 +1082,8 @@ class _FormularioVisitaState extends State<FormularioVisita> {
                       ),
                       child: Column(
                         children: [
-                          _buildHeaderUsuario(e.key, readOnly, isDark), // Header con nombre y X
-                          _buildDetalleUsuario(e.key, readOnly, isDark), // Contenido completo
+                          _buildHeaderUsuario(e.key, readOnly, isDark),
+                          _buildDetalleUsuario(e.key, readOnly, isDark),
                         ],
                       ),
                     );
@@ -1133,16 +1154,15 @@ class _FormularioVisitaState extends State<FormularioVisita> {
               ],
             ),
             const SizedBox(height: 15),
-            // --- CAMBIO AQUÍ: CAJA EXTENDIDA ---
             TextField(
               controller: _obsController, 
               decoration: const InputDecoration(
                 labelText: "Observaciones Generales", 
                 prefixIcon: Icon(Icons.comment_outlined),
-                alignLabelWithHint: true, // Alinea el texto arriba
+                alignLabelWithHint: true,
               ), 
-              maxLines: 6, // Altura máxima
-              minLines: 3, // Altura mínima
+              maxLines: 6,
+              minLines: 3,
               readOnly: readOnly
             ),
           ],
@@ -1206,7 +1226,6 @@ class _FormularioVisitaState extends State<FormularioVisita> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // TITULO SI ESTAMOS EN TABLET
         if (MediaQuery.of(context).size.width > 600) 
            Padding(
              padding: const EdgeInsets.only(bottom: 20),
@@ -1227,7 +1246,6 @@ class _FormularioVisitaState extends State<FormularioVisita> {
            const Text("LISTA DE TAREAS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
            const SizedBox(height: 10),
            
-           // --- CHECKLIST CON HORA ---
            ...kTareasPredefinidas.map((tarea) {
               Map tareasMap = usr['tareas_map'] ?? {};
               bool isChecked = tareasMap.containsKey(tarea);
@@ -1271,7 +1289,6 @@ class _FormularioVisitaState extends State<FormularioVisita> {
              ],
            ),
 
-           // --- GALERÍA DE FOTOS (NUEVO) ---
            if (fotos.isNotEmpty) ...[
              const SizedBox(height: 20),
              const Text("EVIDENCIA FOTOGRÁFICA:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),

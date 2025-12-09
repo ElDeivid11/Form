@@ -28,8 +28,8 @@ class ApiService {
       String baseUrl = await _getBaseUrl();
       print("Intentando conectar a $baseUrl...");
       
-      final respClientes = await http.get(Uri.parse('$baseUrl/clientes')).timeout(const Duration(seconds: 5));
-      final respTecnicos = await http.get(Uri.parse('$baseUrl/tecnicos')).timeout(const Duration(seconds: 5));
+      final respClientes = await http.get(Uri.parse('$baseUrl/clientes')).timeout(const Duration(seconds: 30));
+      final respTecnicos = await http.get(Uri.parse('$baseUrl/tecnicos')).timeout(const Duration(seconds: 30));
 
       if (respClientes.statusCode == 200 && respTecnicos.statusCode == 200) {
         List cli = json.decode(respClientes.body);

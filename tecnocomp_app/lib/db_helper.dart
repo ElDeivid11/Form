@@ -16,15 +16,13 @@ class DBHelper {
   }
 
   Future<Database> _initDB() async {
-    // CAMBIO IMPORTANTE: Cambié el nombre a 'tecnocomp_v7.db' para forzar 
-    // a que la app cree una base de datos nueva y limpia con todas las tablas.
+    // Usamos la misma versión de DB
     String path = join(await getDatabasesPath(), 'tecnocomp_v7.db');
     
     return await openDatabase(
       path,
       version: 1,
       onCreate: (db, version) async {
-        // --- 1. TABLA CLIENTES (Esta era la que faltaba y daba error) ---
         await db.execute('''
           CREATE TABLE clientes(
             nombre TEXT PRIMARY KEY, 
@@ -32,7 +30,6 @@ class DBHelper {
           )
         ''');
 
-        // --- 2. TABLA TÉCNICOS ---
         await db.execute('''
           CREATE TABLE tecnicos(
             nombre TEXT PRIMARY KEY, 
@@ -40,7 +37,6 @@ class DBHelper {
           )
         ''');
 
-        // --- 3. TABLA USUARIOS FRECUENTES ---
         await db.execute('''
           CREATE TABLE usuarios_frecuentes(
             id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -49,7 +45,6 @@ class DBHelper {
           )
         ''');
         
-        // --- 4. TABLA REPORTES ---
         await db.execute('''
           CREATE TABLE reportes(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -148,55 +143,60 @@ class DBHelper {
     await db.delete('usuarios_frecuentes', where: 'nombre = ? AND cliente = ?', whereArgs: [nombre, cliente]);
   }
 
-  // --- SINCRONIZACIÓN (ROBUSTA) ---
-  Future<void> guardarConfiguracion(List clientes, List tecnicos) async {
+  // --- SINCRONIZACIÓN ESPEJO (LA SOLUCIÓN A TU PROBLEMA) ---
+  // Ahora recibimos también la lista de usuarios para sincronizarlos
+  Future<void> guardarConfiguracion(List clientes, List tecnicos, List usuarios) async {
     final db = await database;
     await db.transaction((txn) async {
-      // 1. Guardar Clientes
+      
+      // 1. CLIENTES
+      await txn.delete('clientes'); 
       for (var c in clientes) {
         String nombre = "";
         String email = "";
-
-        if (c is List && c.isNotEmpty) {
-          nombre = c[0].toString();
-          if (c.length > 1) email = c[1].toString();
-        } 
-        else if (c is Map) {
+        if (c is Map) {
           nombre = c['nombre'] ?? "";
           email = c['email'] ?? "";
+        } else if (c is List && c.isNotEmpty) {
+          nombre = c[0].toString();
+          if (c.length > 1) email = c[1].toString();
         }
-
         if (nombre.isNotEmpty) {
-          await txn.rawInsert(
-            'INSERT OR REPLACE INTO clientes(nombre, email) VALUES(?, ?)', 
-            [nombre, email]
-          );
+          await txn.insert('clientes', {'nombre': nombre, 'email': email});
         }
       }
 
-      // 2. Guardar Técnicos
+      // 2. TÉCNICOS
+      await txn.delete('tecnicos');
       for (var t in tecnicos) {
         String nombre = "";
-        String email = ""; // Si viniera email en el futuro
-        
-        if (t is String) {
-          nombre = t;
-        }
-        else if (t is List && t.isNotEmpty) {
-          nombre = t[0].toString();
-          // if (t.length > 1) email = t[1].toString();
-        }
-        else if (t is Map) {
+        String email = "";
+        if (t is Map) {
             nombre = t['nombre'] ?? "";
             email = t['email'] ?? "";
+        } else if (t is String) {
+          nombre = t;
         }
-
         if (nombre.isNotEmpty) {
-           await txn.rawInsert(
-             'INSERT OR REPLACE INTO tecnicos(nombre, email) VALUES(?, ?)', 
-             [nombre, email]
-           );
+           await txn.insert('tecnicos', {'nombre': nombre, 'email': email});
         }
+      }
+
+      // 3. USUARIOS FRECUENTES
+      await txn.delete('usuarios_frecuentes');
+      for (var u in usuarios) {
+         if (u is Map) {
+           // Verificamos que vengan los datos antes de insertar
+           String nom = u['nombre'] ?? "";
+           String cli = u['cliente'] ?? ""; // Ojo: en Python le llamé 'cliente' en el GET
+           
+           if (nom.isNotEmpty && cli.isNotEmpty) {
+              await txn.insert('usuarios_frecuentes', {
+                'nombre': nom,
+                'cliente': cli
+              });
+           }
+         }
       }
     });
   }

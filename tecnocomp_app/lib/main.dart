@@ -157,41 +157,37 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => pendientes = list.length);
   }
 
+  // --- MODIFICADO: FUNCIÓN SINCRONIZAR SOLO VALIDA CONEXIÓN ---
   void _sincronizar() async {
-    _mostrarLoading("Sincronizando...");
+    _mostrarLoading("Validando conexión...");
 
-    // 1. RECOLECTAR DATOS LOCALES
+    // 1. ANTES SUBÍAMOS DATOS LOCALES -> AHORA ESTÁ DESACTIVADO
+    /*
     final db = DBHelper();
     final clientesLocales = await db.getClientesMap();
     final tecnicosLocales = await db.getTecnicos();
-    
-    // Mapa de usuarios: { "ClienteA": ["User1", "User2"], ... }
     Map<String, List<String>> usuariosLocales = {};
     for (var c in clientesLocales) {
       String nombreCli = c['nombre'];
       usuariosLocales[nombreCli] = await db.getUsuariosPorCliente(nombreCli);
     }
-
-    // 2. INTENTAR SUBIR TODO LO LOCAL PRIMERO (PUSH)
-    // No importa si fallan algunos, el servidor filtra duplicados.
     await ApiService.subirDatosLocales(
       clientes: clientesLocales,
       tecnicos: tecnicosLocales,
       usuariosPorCliente: usuariosLocales
     );
+    */
 
-    // 3. AHORA SÍ, DESCARGAR ACTUALIZACIÓN (PULL)
-    // Esto traerá los datos del servidor (que ahora ya incluyen lo que acabamos de subir)
+    // 2. LLAMAMOS AL NUEVO MÉTODO QUE SOLO HACE "PING"
     bool resultado = await ApiService.sincronizarDatos();
     
     if (!mounted) return;
     Navigator.pop(context); // Cerrar loading
     
     if (resultado) {
-      _mostrarSnack("✅ Sincronización completa (Subida y Bajada)", Colors.green);
-      // Opcional: Recargar datos si estás en una pantalla que los muestra
+      _mostrarSnack("✅ Conexión con Servidor: EXITOSA (Datos locales seguros)", Colors.green);
     } else {
-      _mostrarConfigurarIP(mensajeError: "Falló la descarga del servidor");
+      _mostrarConfigurarIP(mensajeError: "No se detectó el servidor API");
     }
   }
 
@@ -199,7 +195,7 @@ class _HomeScreenState extends State<HomeScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Error de Sincronización"),
+        title: const Text("Error de Conexión"),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -388,7 +384,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       
                       _MenuCard(
                         title: "Sincronizar",
-                        subtitle: "Actualizar y Enviar Datos",
+                        subtitle: "Validar conexión servidor", // Modificado el subtítulo
                         icon: Icons.cloud_sync_rounded,
                         color: Colors.blueGrey,
                         onTap: _sincronizar,
@@ -815,7 +811,7 @@ class _PantallaGestionDatosState extends State<PantallaGestionDatos> with Single
       if (!mounted) return;
       Navigator.pop(context);
 
-      // Borramos local incluso si falla nube (o podrías usar la misma lógica del reporte)
+      // Borramos local incluso si falla nube
       await DBHelper().eliminarCliente(nombre);
       _cargarDatos();
       if(nubeOk) _mostrarSnack("Eliminado correctamente", Colors.green);
@@ -824,7 +820,6 @@ class _PantallaGestionDatosState extends State<PantallaGestionDatos> with Single
   }
 
   void _borrarTecnico(String nombre) async {
-    // ... Lógica similar ...
     _mostrarLoading("Eliminando...");
     bool nubeOk = await ApiService.eliminarTecnicoRemoto(nombre);
     if (!mounted) return;
@@ -962,7 +957,7 @@ class _FormularioVisitaState extends State<FormularioVisita> {
     }
   }
 
-  // --- CREACIÓN RÁPIDA: Ahora envía a la nube ---
+  // --- CREACIÓN RÁPIDA: AHORA NO OBLIGA A TENER CONEXIÓN ---
   void _agregarItemRapido(bool esCliente) {
     if (widget.soloLectura) return;
     final controller = TextEditingController();
@@ -997,7 +992,7 @@ class _FormularioVisitaState extends State<FormularioVisita> {
 
                 if (esCliente) {
                    await DBHelper().agregarClienteLocal(nombre, emailController.text);
-                   // ENVIAR A NUBE (Fire & Forget, no esperamos respuesta para no bloquear)
+                   // Intentamos enviar a nube sin bloquear
                    ApiService.crearClienteRemoto(nombre, emailController.text);
                    _alSeleccionarCliente(nombre);
                 } else {
@@ -1017,7 +1012,7 @@ class _FormularioVisitaState extends State<FormularioVisita> {
     );
   }
 
-  // --- CREACIÓN USUARIO: Ahora envía a la nube ---
+  // --- CREACIÓN USUARIO: NO OBLIGA CONEXIÓN ---
   void _agregarUsuarioRapido() {
     if (widget.soloLectura) return;
     if (_selectedCliente == null) {
@@ -1042,8 +1037,6 @@ class _FormularioVisitaState extends State<FormularioVisita> {
                 }
 
                 await DBHelper().guardarUsuarioFrecuente(nombre, _selectedCliente!);
-                
-                // ENVIAR A NUBE PARA SINCRONIZACIÓN
                 ApiService.crearUsuarioRemoto(nombre, _selectedCliente!);
 
                 setState(() {

@@ -18,49 +18,37 @@ class ApiService {
     return finalUrl;
   }
 
-  // 1. SINCRONIZACIÓN BLINDADA (SEGURIDAD ANTE TODO)
+  // --- MODIFICADO: SOLO VALIDACIÓN DE CONEXIÓN ---
   static Future<bool> sincronizarDatos() async {
     try {
       String baseUrl = await _getBaseUrl();
-      print("Sincronizando con $baseUrl...");
+      print("Probando conexión con $baseUrl...");
       
-      // Hacemos las peticiones
-      final respClientes = await http.get(Uri.parse('$baseUrl/clientes')).timeout(const Duration(seconds: 15));
-      final respTecnicos = await http.get(Uri.parse('$baseUrl/tecnicos')).timeout(const Duration(seconds: 15));
-      final respUsuarios = await http.get(Uri.parse('$baseUrl/usuarios_todos')).timeout(const Duration(seconds: 15));
+      // Hacemos peticiones ligeras solo para ver si el servidor responde
+      final respClientes = await http.get(Uri.parse('$baseUrl/clientes')).timeout(const Duration(seconds: 5));
+      final respTecnicos = await http.get(Uri.parse('$baseUrl/tecnicos')).timeout(const Duration(seconds: 5));
 
-      print("Status Clientes: ${respClientes.statusCode}");
-      print("Status Tecnicos: ${respTecnicos.statusCode}");
-      print("Status Usuarios: ${respUsuarios.statusCode}");
-
-      // VALIDACIÓN ESTRICTA: Solo procedemos si TODOS respondieron OK (200)
-      if (respClientes.statusCode == 200 && 
-          respTecnicos.statusCode == 200 && 
-          respUsuarios.statusCode == 200) {
+      // Si el servidor responde OK (200)
+      if (respClientes.statusCode == 200 && respTecnicos.statusCode == 200) {
         
-        List cli = json.decode(respClientes.body);
-        List tec = json.decode(respTecnicos.body);
-        List users = json.decode(respUsuarios.body);
-
-        // Si alguna lista viene vacía inesperadamente, podríamos poner un freno aquí,
-        // pero asumiremos que si es 200 OK, la lista vacía es intencional.
+        print("✅ Conexión Exitosa - NO se han modificado datos locales.");
         
-        // Llamamos a la función que actualiza la BD local
-        await DBHelper().guardarConfiguracion(cli, tec, users);
-        return true;
+        // AQUÍ ESTABA LA LÍNEA QUE BORRABA TUS DATOS. LA HEMOS QUITADO.
+        // await DBHelper().guardarConfiguracion(...); 
+
+        return true; 
 
       } else {
-        // Si alguno falló (ej: 404, 500), NO TOCAMOS NADA LOCALMENTE
-        print("Error: Alguna petición falló. No se borrará nada local.");
+        print("⚠️ Servidor respondió pero con errores (Status no 200).");
         return false;
       }
     } catch (e) {
-      print("Error Crítico Sync: $e");
+      print("Error de Conexión: $e");
       return false; // Retornamos false para que la UI sepa que falló
     }
   }
 
-  // 2. CREACIÓN REMOTA (Con Logs para depurar)
+  // 2. CREACIÓN REMOTA (Se mantiene por si quieres enviar datos individuales al crearlos)
   
   static Future<bool> crearClienteRemoto(String nombre, String email) async {
     try {
@@ -71,7 +59,6 @@ class ApiService {
         headers: {"Content-Type": "application/json"},
         body: json.encode({"nombre": nombre, "email": email}),
       );
-      print("Respuesta crearCliente: ${response.statusCode}");
       return response.statusCode == 200;
     } catch (e) { print("Error crearCliente: $e"); return false; }
   }
@@ -85,7 +72,6 @@ class ApiService {
         headers: {"Content-Type": "application/json"},
         body: json.encode({"nombre": nombre}),
       );
-      print("Respuesta crearTecnico: ${response.statusCode}");
       return response.statusCode == 200;
     } catch (e) { print("Error crearTecnico: $e"); return false; }
   }
@@ -99,14 +85,11 @@ class ApiService {
         headers: {"Content-Type": "application/json"},
         body: json.encode({"nombre": nombre, "cliente_nombre": cliente}),
       );
-      print("Respuesta crearUsuario: ${response.statusCode}");
       return response.statusCode == 200;
     } catch (e) { print("Error crearUsuario: $e"); return false; }
   }
 
-  // ... (RESTO DE FUNCIONES DE ELIMINACIÓN Y SUBIDA IGUAL QUE ANTES) ...
-  // Asegúrate de incluir aquí las funciones subirReporte, eliminarReporteRemoto, etc.
-  // Copia el resto del archivo anterior aquí si falta.
+  // --- SUBIDA DE REPORTES (Se mantiene intacto para enviar los PDFs) ---
 
   static Future<bool> subirReporte(Map<String, dynamic> reporte) async {
     try {
@@ -166,6 +149,16 @@ class ApiService {
     } catch (e) { return false; }
   }
 
+  static Future<bool> eliminarUsuarioRemoto(String nombre, String cliente) async {
+    try {
+      String baseUrl = await _getBaseUrl();
+      final url = '$baseUrl/usuario/${Uri.encodeComponent(cliente)}/${Uri.encodeComponent(nombre)}';
+      final response = await http.delete(Uri.parse(url));
+      return response.statusCode == 200;
+    } catch (e) { return false; }
+  }
+
+  // Se mantiene la función pero no la usaremos en el botón "Sincronizar" principal
   static Future<bool> subirDatosLocales({
     required List<Map<String, dynamic>> clientes,
     required List<String> tecnicos,
@@ -186,9 +179,7 @@ class ApiService {
               "email": c['email'] ?? ""
             }),
           );
-        } catch (e) {
-          print("Error subiendo cliente ${c['nombre']}: $e");
-        }
+        } catch (e) { print("Error subiendo cliente: $e"); }
       }
 
       // B. SUBIR TÉCNICOS
@@ -199,9 +190,7 @@ class ApiService {
             headers: {"Content-Type": "application/json"},
             body: json.encode({"nombre": t}),
           );
-        } catch (e) {
-          print("Error subiendo técnico $t: $e");
-        }
+        } catch (e) { print("Error subiendo técnico: $e"); }
       }
 
       // C. SUBIR USUARIOS
@@ -217,25 +206,13 @@ class ApiService {
                 "cliente": cliente
               }),
             );
-          } catch (e) {
-            print("Error subiendo usuario $usuario: $e");
-          }
+          } catch (e) { print("Error subiendo usuario: $e"); }
         }
       }
-      
       return true;
     } catch (e) {
       print("Error General Subida Datos: $e");
       return false;
     }
-  }
-
-  static Future<bool> eliminarUsuarioRemoto(String nombre, String cliente) async {
-    try {
-      String baseUrl = await _getBaseUrl();
-      final url = '$baseUrl/usuario/${Uri.encodeComponent(cliente)}/${Uri.encodeComponent(nombre)}';
-      final response = await http.delete(Uri.parse(url));
-      return response.statusCode == 200;
-    } catch (e) { return false; }
   }
 }
